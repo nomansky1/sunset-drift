@@ -803,7 +803,7 @@ function update(dt){
   } else if(state==='race'){
     raceTime+=dt; if(goTimer>0) goTimer-=dt; else if(elFlash.textContent==='GO!') elFlash.classList.remove('show');
     const inp = window.__auto ? aiInput(player) : { throttle: keys.up || (isTouch && !keys.down), brake: keys.down,
-      steer:(keys.right?1:0)-(keys.left?1:0), drift: keys.space, boost: keys.shift };
+      steer:(keys.left?1:0)-(keys.right?1:0), drift: keys.space, boost: keys.shift };
     updateCar(player, inp, dt);
     for(let i=1;i<cars.length;i++){ cars[i].maxScale=0.94+clamp((player.lap*SAMPLES+player.trackIdx-(cars[i].lap*SAMPLES+cars[i].trackIdx))/SAMPLES,-0.06,0.12);
       updateCar(cars[i], aiInput(cars[i]), dt); }
