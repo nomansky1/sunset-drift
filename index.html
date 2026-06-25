@@ -171,6 +171,9 @@
 <script src="https://unpkg.com/three@0.137.5/examples/js/shaders/LuminosityHighPassShader.js"></script>
 <script src="https://unpkg.com/three@0.137.5/examples/js/shaders/GammaCorrectionShader.js"></script>
 <script src="https://unpkg.com/three@0.137.5/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<!-- model + HDRI loaders -->
+<script src="https://unpkg.com/three@0.137.5/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://unpkg.com/three@0.137.5/examples/js/loaders/RGBELoader.js"></script>
 
 <script>
 
@@ -231,6 +234,7 @@ let trackRadius = 200;
 let dust, sparks, skidPool = [], skidCursor = 0, skidShared;
 let audio;
 let sunLight=null, sunDirV=null, glowTex=null;
+let carBody=null, carReady=false, carYaw=0;   // realistic GLB car (swapped over the box placeholder)
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0;
 let bestLap = null;
@@ -647,9 +651,16 @@ function buildEnvironment(){
   sg.addColorStop(0,'rgba(255,245,210,1)'); sg.addColorStop(1,'rgba(255,245,210,0)');
   x.fillStyle=sg; x.fillRect(58,78,144,144);
   const tex=new THREE.CanvasTexture(c); tex.mapping=THREE.EquirectangularReflectionMapping;
-  try{ const pm=new THREE.PMREMGenerator(renderer); const env=pm.fromEquirectangular(tex).texture;
-    scene.environment=env; pm.dispose(); tex.dispose(); }
+  try{ const pm=new THREE.PMREMGenerator(renderer); scene.environment=pm.fromEquirectangular(tex).texture; pm.dispose(); tex.dispose(); }
   catch(e){ scene.environment=tex; }
+  // real CC0 sunset HDRI -> photographic reflections on cars / glass / road (replaces the canvas env once loaded)
+  if(typeof THREE.RGBELoader!=='undefined'){
+    try{ new THREE.RGBELoader().load('assets/sunset_1k.hdr', hdr=>{
+      try{ hdr.mapping=THREE.EquirectangularReflectionMapping;
+        const pm=new THREE.PMREMGenerator(renderer); scene.environment=pm.fromEquirectangular(hdr).texture;
+        pm.dispose(); hdr.dispose(); }catch(e){}
+    }, undefined, ()=>{}); }catch(e){}
+  }
 }
 function buildLights(sunDir){
   scene.add(new THREE.HemisphereLight(0xffd9a0, 0x3a2f1c, 0.85));
@@ -726,10 +737,45 @@ function buildCar(color){
 function makeCar(color, isPlayer){
   const rig=buildCar(color); scene.add(rig.group);
   if(isTouch && !isPlayer) rig.group.traverse(o=>{ o.castShadow=false; }); // mobile: only the player casts a shadow
-  return { rig, isPlayer, pos:new THREE.Vector2(), vel:new THREE.Vector2(), heading:0,
+  return { rig, isPlayer, color, pos:new THREE.Vector2(), vel:new THREE.Vector2(), heading:0,
     boost:CONFIG.boostMax, boosting:false, wasBoost:false, drifting:false,
     trackIdx:0, trackDist:0, halfPassed:false, lap:0, lapStart:0, finished:false,
     lineOffset:(Math.random()*2-1)*CONFIG.roadHalfWidth*0.4, maxScale:1, skidTimer:0 };
+}
+
+/* ---- realistic GLB car (MIT-licensed, web-optimized) swapped in over the box placeholder ---- */
+function loadCarModels(){
+  if(typeof THREE.GLTFLoader==='undefined') return;
+  try{ new THREE.GLTFLoader().load('models/car-body.glb', g=>{
+    carBody=normalizeBody(g.scene); carReady=true; if(cars && cars.length) upgradeCars();
+  }, undefined, ()=>{ /* keep the box car if the model fails */ }); }catch(e){}
+}
+function normalizeBody(obj){
+  obj.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(obj), size=new THREE.Vector3(), ctr=new THREE.Vector3();
+  box.getSize(size); box.getCenter(ctr);
+  const rotY=(size.x>size.z)?Math.PI/2:0;                // make the long axis = Z (car length)
+  const sc=4.4/Math.max(size.x,size.z,0.001);            // scale to ~4.4 units long
+  obj.position.set(-ctr.x, -box.min.y, -ctr.z);          // centre XZ + sit base on the ground
+  obj.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false; if(o.material) o.material.envMapIntensity=1.3; } });
+  const inner=new THREE.Group(); inner.add(obj); inner.rotation.y=rotY;
+  const outer=new THREE.Group(); outer.scale.setScalar(sc); outer.add(inner);
+  return outer;                                          // outer.rotation.y stays free for carYaw tuning
+}
+function upgradeCars(){
+  if(!carBody) return;
+  const bb=new THREE.Box3().setFromObject(carBody), s=new THREE.Vector3(); bb.getSize(s);
+  const wx=Math.max(0.72, s.x*0.5-0.12);                 // sit the wheels at the body's width
+  cars.forEach(c=>{ const rig=c.rig;
+    rig.chassis.clear();                                  // drop the box body + glow sprites
+    const body=carBody.clone();
+    body.traverse(o=>{ if(o.isMesh && o.material && o.material.name==='body'){   // glossy paint, one colour per car
+      o.material=o.material.clone(); o.material.color.set(c.color);
+      o.material.metalness=0.45; o.material.roughness=0.2; o.material.envMapIntensity=1.4; } });
+    body.rotation.y=carYaw; rig.chassis.add(body);
+    rig.wheels.forEach(w=> w.position.x=(w.position.x<0?-1:1)*wx );
+    if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
+  });
 }
 
 function placeGrid(){
@@ -1132,6 +1178,7 @@ function init(){
   // cars
   cars=[]; player=makeCar(CONFIG.colors.player, true); cars.push(player);
   for(let i=0;i<CONFIG.aiCount;i++) cars.push(makeCar(CONFIG.colors.ai[i%CONFIG.colors.ai.length], false));
+  loadCarModels();   // upgrades the box placeholders to the realistic GLB when it loads
 
   audio=new AudioEngine();
   initMap(); placeGrid();
@@ -1150,7 +1197,8 @@ function init(){
   // debug hooks for automated verification
   window.GAME={ get state(){return state;}, get player(){return player;}, get cars(){return cars;},
     get joyX(){return joyX;}, setJoy:(v)=>{joyX=v;}, sceneCount:()=>scene.children.length,
-    get bloom(){return !!composer;}, press:(k,v)=>{keys[k]=v;}, start:startGame };
+    get bloom(){return !!composer;}, get carReady(){return carReady;},
+    setCarYaw:(v)=>{carYaw=v; upgradeCars();}, press:(k,v)=>{keys[k]=v;}, start:startGame };
 
   buildComposer();
   animate();
