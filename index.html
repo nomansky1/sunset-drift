@@ -163,6 +163,14 @@
 <!-- Three.js loaded as a classic global script so this single file runs anywhere,
      including when opened directly on a phone (no JS-module / file:// restrictions). -->
 <script src="https://unpkg.com/three@0.137.5/build/three.min.js"></script>
+<!-- post-processing (bloom) — classic global builds for r137 -->
+<script src="https://unpkg.com/three@0.137.5/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://unpkg.com/three@0.137.5/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://unpkg.com/three@0.137.5/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://unpkg.com/three@0.137.5/examples/js/shaders/CopyShader.js"></script>
+<script src="https://unpkg.com/three@0.137.5/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://unpkg.com/three@0.137.5/examples/js/shaders/GammaCorrectionShader.js"></script>
+<script src="https://unpkg.com/three@0.137.5/examples/js/postprocessing/UnrealBloomPass.js"></script>
 
 <script>
 
@@ -195,9 +203,9 @@ const CONFIG = {
   boostDriftRefill: 26, // per sec while drifting (drift to earn boost!)
 
   // track
-  roadHalfWidth: 8,
-  offTrackDrag: 3,      // extra slowdown on sand (recoverable — sand slows you, doesn't trap you)
-  wallPush: 60,         // soft guardrail strength
+  roadHalfWidth: 13,    // wide GTA-style road (was 8)
+  offTrackDrag: 1.0,    // gentle — the curb stops you, it doesn't drag you down
+  wallPush: 60,         // (legacy; curb-slide handled in updateCar)
 
   // camera
   camDist: 12, camHeight: 5.4, camLerp: 5.0, camLookAhead: 7,
@@ -234,7 +242,10 @@ const keys = { up:false, down:false, left:false, right:false, space:false, shift
 let joyX = 0;   // analog steering from the on-screen joystick (-1..1; + = left, matching the keys)
 
 // scratch
-const _v = new THREE.Vector2(), _f = new THREE.Vector2(), _l = new THREE.Vector2();
+const _v = new THREE.Vector2(), _f = new THREE.Vector2(), _l = new THREE.Vector2(), _r = new THREE.Vector2();
+const _cd = new THREE.Vector3(), _cl = new THREE.Vector3();   // camera scratch (no per-frame allocs)
+let camShake = 0;                       // decaying camera-shake impulse
+let composer = null, bloomPass = null;  // post-processing (bloom)
 
 /* =========================================================================
    PARTICLES  — soft round points that fade per-particle (custom shader)
@@ -356,7 +367,7 @@ function buildTrackTables(){
 }
 
 // generic flat ribbon along the track
-function buildRibbon(halfW, y, color, roughness, tex, vScale, metalness){
+function buildRibbon(halfW, y, color, roughness, tex, vScale, metalness, material){
   const pos=[], idx=[], uv=[]; let cum=0;
   for(let i=0;i<=SAMPLES;i++){ const j=i%SAMPLES; const p=samplePts[j], n=sampleNorm[j];
     if(i>0) cum += samplePts[j].distanceTo(samplePts[(i-1+SAMPLES)%SAMPLES]);
@@ -368,53 +379,62 @@ function buildRibbon(halfW, y, color, roughness, tex, vScale, metalness){
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv,2));
   g.setIndex(idx); g.computeVertexNormals();
-  const opts={ color, roughness:roughness??0.9, metalness:metalness||0 };
-  if(tex) opts.map=tex;
-  const mesh=new THREE.Mesh(g, new THREE.MeshStandardMaterial(opts));
+  let m = material;
+  if(!m){ const opts={ color, roughness:roughness??0.9, metalness:metalness||0 }; if(tex) opts.map=tex; m=new THREE.MeshStandardMaterial(opts); }
+  const mesh=new THREE.Mesh(g, m);
   mesh.receiveShadow=true; return mesh;
 }
 
-function makeAsphaltTexture(){
-  const c=document.createElement('canvas'); c.width=c.height=128; const x=c.getContext('2d');
-  x.fillStyle='#2c2c34'; x.fillRect(0,0,128,128);
-  for(let i=0;i<2600;i++){ const v=(Math.random()*36-18)|0;
-    x.fillStyle='rgba('+(52+v)+','+(52+v)+','+(60+v)+',0.5)'; x.fillRect(Math.random()*128|0, Math.random()*128|0, 2,2); }
-  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
+// two side strips (annulus) and a vertical curb face — used for raised sidewalks
+function buildSideStrips(inner, outer, y, material){
+  [1,-1].forEach(side=>{
+    const pos=[], idx=[], uv=[]; let cum=0;
+    for(let i=0;i<=SAMPLES;i++){ const j=i%SAMPLES, p=samplePts[j], n=sampleNorm[j];
+      if(i>0) cum+=samplePts[j].distanceTo(samplePts[(i-1+SAMPLES)%SAMPLES]);
+      pos.push(p.x+n.x*inner*side, y, p.y+n.y*inner*side); uv.push(0, cum*0.12);
+      pos.push(p.x+n.x*outer*side, y, p.y+n.y*outer*side); uv.push(1, cum*0.12); }
+    for(let i=0;i<SAMPLES;i++){ const a=i*2; idx.push(a,a+1,a+2, a+1,a+3,a+2); }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2)); g.setIndex(idx); g.computeVertexNormals();
+    const mesh=new THREE.Mesh(g, material); mesh.receiveShadow=true; scene.add(mesh);
+  });
 }
-function buildTrackMeshes(){
-  // curb, then textured slightly-reflective (wet) asphalt that catches the sunset
-  const asphalt=makeAsphaltTexture();
-  scene.add(buildRibbon(CONFIG.roadHalfWidth+2.2, 0.04, CONFIG.colors.curb, 0.95));
-  scene.add(buildRibbon(CONFIG.roadHalfWidth,     0.07, 0xffffff, 0.5, asphalt, 0.07, 0.25));
-  // thin white edge lines
-  const edge=(side)=>{ const pos=[], idx=[], hw=CONFIG.roadHalfWidth;
-    for(let i=0;i<=SAMPLES;i++){ const j=i%SAMPLES,p=samplePts[j],n=sampleNorm[j],s=side;
-      pos.push(p.x+n.x*(hw*s+0.0)*1, 0.085, p.y+n.y*(hw*s)); // inner
-      pos.push(p.x+n.x*(hw*s-0.5*s), 0.085, p.y+n.y*(hw*s-0.5*s)); }
+function buildCurbFace(at, yLow, yHigh, material){
+  [1,-1].forEach(side=>{
+    const pos=[], idx=[];
+    for(let i=0;i<=SAMPLES;i++){ const j=i%SAMPLES, p=samplePts[j], n=sampleNorm[j];
+      pos.push(p.x+n.x*at*side, yLow, p.y+n.y*at*side);
+      pos.push(p.x+n.x*at*side, yHigh, p.y+n.y*at*side); }
     for(let i=0;i<SAMPLES;i++){ const a=i*2; idx.push(a,a+1,a+2, a+1,a+3,a+2); }
     const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
     g.setIndex(idx); g.computeVertexNormals();
-    return new THREE.Mesh(g, new THREE.MeshStandardMaterial({color:CONFIG.colors.edge, roughness:.6})); };
-  scene.add(edge(1)); scene.add(edge(-1));
+    const mesh=new THREE.Mesh(g, material); mesh.receiveShadow=true; scene.add(mesh);
+  });
+}
+function buildTrackMeshes(){
+  const loader=new THREE.TextureLoader();
+  const aniso=(renderer.capabilities&&renderer.capabilities.getMaxAnisotropy)?renderer.capabilities.getMaxAnisotropy():4;
+  // REAL asphalt: lane-marking diffuse (across the width once) + tiled normal/roughness relief
+  const roadMap=loader.load('textures/road.png');
+  if('encoding' in roadMap) roadMap.encoding=THREE.sRGBEncoding;
+  roadMap.wrapS=THREE.ClampToEdgeWrapping; roadMap.wrapT=THREE.RepeatWrapping;
+  roadMap.repeat.set(1,1/14); roadMap.anisotropy=aniso;
+  const grain=p=>{ const t=loader.load(p); t.wrapS=t.wrapT=THREE.RepeatWrapping;
+    t.repeat.set(CONFIG.roadHalfWidth*0.55,0.32); t.anisotropy=aniso; return t; };
+  const roadMat=new THREE.MeshStandardMaterial({ map:roadMap,
+    normalMap:grain('textures/road_normal.jpg'), normalScale:new THREE.Vector2(0.8,0.8),
+    roughnessMap:grain('textures/road_rough.jpg'), roughness:0.88, metalness:0.0,
+    emissiveMap:roadMap, emissive:0xffffff, emissiveIntensity:0.42 }); // self-light the lane markings at dusk (+ bloom-ready)
 
-  // dashed centre line
-  const dashG=new THREE.BoxGeometry(0.4,0.05,2.4), dashM=new THREE.MeshStandardMaterial({color:0xf6d24a, roughness:.6});
-  for(let i=0;i<SAMPLES;i+=10){ const p=samplePts[i],t=sampleTan[i];
-    const d=new THREE.Mesh(dashG,dashM); d.position.set(p.x,0.09,p.y); d.rotation.y=Math.atan2(t.x,t.y);
-    scene.add(d); }
+  scene.add(buildRibbon(CONFIG.roadHalfWidth, 0.07, null, null, null, 1, null, roadMat)); // textured road (v=world units)
+  // GTA-style raised sidewalks + curb on both sides (the curb is also our barrier)
+  const curbMat=new THREE.MeshStandardMaterial({color:0x9a9da3, roughness:0.85});
+  const walkMat=new THREE.MeshStandardMaterial({color:0x55585f, roughness:0.95});
+  buildCurbFace(CONFIG.roadHalfWidth, 0.06, 0.28, curbMat);
+  buildSideStrips(CONFIG.roadHalfWidth, CONFIG.roadHalfWidth+4.5, 0.28, walkMat);
 
-  // guard-rail posts along the outer + inner edge
-  const postG=new THREE.BoxGeometry(0.5,1.4,0.5), postM=new THREE.MeshStandardMaterial({color:0xeae0d0,roughness:.7});
-  const railG=new THREE.BoxGeometry(0.18,0.18,3.2), railM=new THREE.MeshStandardMaterial({color:0xd23b3b,roughness:.6});
-  const off=CONFIG.roadHalfWidth+3.4;   // clear of the car's max width so it never clips the rail
-  for(let i=0;i<SAMPLES;i+=8){ const p=samplePts[i],n=sampleNorm[i],t=sampleTan[i],ang=Math.atan2(t.x,t.y);
-    [1,-1].forEach(s=>{ const px=p.x+n.x*off*s, pz=p.y+n.y*off*s;
-      const post=new THREE.Mesh(postG,postM); post.position.set(px,0.7,pz); post.castShadow=true; scene.add(post);
-      const rail=new THREE.Mesh(railG,railM); rail.position.set(px,1.0,pz); rail.rotation.y=ang; scene.add(rail); }); }
-
-  // start / finish gate (checkered banner + posts)
+  // start / finish gate + checkpoint gates (overhead banners)
   buildGate(0, true);
-  // a few checkpoint gates
   [Math.floor(SAMPLES*0.25), Math.floor(SAMPLES*0.5), Math.floor(SAMPLES*0.75)].forEach(i=>buildGate(i,false));
 }
 
@@ -456,7 +476,7 @@ function makeCityGroundTexture(){
   }
   x.fillStyle='rgba(240,220,120,.45)';                            // faint lane dashes
   for(let i=0;i<=n;i++) for(let d=2; d<256; d+=18){ x.fillRect(i*cell-1,d,2,8); x.fillRect(d,i*cell-1,8,2); }
-  return new THREE.CanvasTexture(c);
+  const t=new THREE.CanvasTexture(c); if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
 }
 function makeWindowTextures(rng){
   const mk=()=>{ const c=document.createElement('canvas'); c.width=c.height=64; return [c,c.getContext('2d')]; };
@@ -472,6 +492,7 @@ function makeWindowTextures(rng){
   }
   const tm=new THREE.CanvasTexture(cm), te=new THREE.CanvasTexture(ce);
   tm.magFilter=te.magFilter=THREE.NearestFilter;
+  if('encoding' in tm) tm.encoding=THREE.sRGBEncoding;   // albedo = sRGB (emissive map stays linear)
   return { map:tm, emis:te };
 }
 function buildTerrain(){
@@ -492,7 +513,7 @@ function buildCity(rng){
     if(rng()<0.12) continue;                                       // empty lot / plaza
     const fw=18+rng()*22, fd=18+rng()*22;
     // footprint-aware: the building's far CORNER must stay off the road + sidewalk (no overhang)
-    if(distToTrackApprox(x,z) < CONFIG.roadHalfWidth + Math.hypot(fw,fd)*0.5 + 4) continue;
+    if(distToTrackApprox(x,z) < CONFIG.roadHalfWidth + Math.hypot(fw,fd)*0.5 + 5.5) continue; // clear road + sidewalk
     const distC=Math.hypot(x-trackCentroid.x, z-trackCentroid.y);
     const downtown=clamp(1-distC/520,0,1);
     const h=8 + downtown*54 + rng()*rng()*42;                      // taller downtown + random spikes
@@ -511,8 +532,8 @@ function buildPalms(rng){
   const trunkMat=new THREE.MeshStandardMaterial({color:0x7a5a36, flatShading:true, roughness:1});
   const leafMat=new THREE.MeshStandardMaterial({color:0x3f8a44, flatShading:true, roughness:1});
   for(let k=0;k<16;k++){
-    const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>0.5?1:-1, off=CONFIG.roadHalfWidth+8+rng()*8;
-    const x=p.x+n.x*off*side, z=p.y+n.y*off*side; if(distToTrackApprox(x,z)<CONFIG.roadHalfWidth+7) continue;
+    const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>0.5?1:-1, off=CONFIG.roadHalfWidth+2.4+rng()*1.8;
+    const x=p.x+n.x*off*side, z=p.y+n.y*off*side;   // on the sidewalk verge (Vice-City palms)
     const grp=new THREE.Group(), hh=6+rng()*4;
     const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.45,hh,6), trunkMat); trunk.position.y=hh/2; grp.add(trunk);
     for(let a=0;a<4;a++){ const leaf=new THREE.Mesh(new THREE.ConeGeometry(0.45,3.0,4), leafMat);
@@ -636,10 +657,11 @@ function buildCar(color){
    ========================================================================= */
 function makeCar(color, isPlayer){
   const rig=buildCar(color); scene.add(rig.group);
+  if(isTouch && !isPlayer) rig.group.traverse(o=>{ o.castShadow=false; }); // mobile: only the player casts a shadow
   return { rig, isPlayer, pos:new THREE.Vector2(), vel:new THREE.Vector2(), heading:0,
     boost:CONFIG.boostMax, boosting:false, wasBoost:false, drifting:false,
     trackIdx:0, trackDist:0, halfPassed:false, lap:0, lapStart:0, finished:false,
-    lineOffset:(Math.random()*2-1)*3, maxScale:1, skidTimer:0 };
+    lineOffset:(Math.random()*2-1)*CONFIG.roadHalfWidth*0.4, maxScale:1, skidTimer:0 };
 }
 
 function placeGrid(){
@@ -647,7 +669,7 @@ function placeGrid(){
     const row=Math.floor(i/2), col=i%2;
     const idx=((SAMPLES-10 - row*7)%SAMPLES+SAMPLES)%SAMPLES;
     const p=samplePts[idx], n=sampleNorm[idx], t=sampleTan[idx];
-    const lane=(col===0?-2.6:2.6);
+    const lane=(col===0?-1:1)*CONFIG.roadHalfWidth*0.42;   // spread the grid across the wider road
     c.pos.set(p.x+n.x*lane, p.y+n.y*lane);
     c.heading=Math.atan2(t.x,t.y);
     c.vel.set(0,0); c.boost=CONFIG.boostMax; c.trackIdx=idx; c.halfPassed=false;
@@ -706,29 +728,35 @@ function updateCar(c, inp, dt){
   const fd=c.vel.dot(_f);
   _l.copy(c.vel).addScaledVector(_f, -fd);          // lateral component
   const grip=c.drifting?CONFIG.gripDrift:CONFIG.gripNormal;
-  _l.multiplyScalar(Math.max(0,1-grip*dt));
+  _l.multiplyScalar(Math.exp(-grip*dt));            // frame-rate independent
   c.vel.copy(_f).multiplyScalar(fd).add(_l);
 
-  // drag + off-track sand
-  let drag=CONFIG.drag; if(c.trackDist>CONFIG.roadHalfWidth) drag+=CONFIG.offTrackDrag;
-  c.vel.multiplyScalar(Math.max(0,1-drag*dt));
-
-  // soft guardrail: push back toward centre if beyond rail
-  const limit=CONFIG.roadHalfWidth+2.2;
-  if(c.trackDist>limit){ const p=samplePts[c.trackIdx];
-    _v.set(p.x-c.pos.x, p.y-c.pos.y).normalize();
-    c.vel.addScaledVector(_v, CONFIG.wallPush*dt);
-  }
+  // rolling drag (frame-rate independent)
+  c.vel.multiplyScalar(Math.exp(-CONFIG.drag*dt));
 
   // integrate
   c.pos.addScaledVector(c.vel, dt);
+
+  // curb barrier: SLIDE along it — cancel only the into-wall velocity, keep your speed
+  { const p=samplePts[c.trackIdx]; _v.set(c.pos.x-p.x, c.pos.y-p.y); const dd=_v.length();
+    const limit=CONFIG.roadHalfWidth-0.5;
+    if(dd>limit){ _v.multiplyScalar(1/dd);                 // outward normal
+      const vOut=c.vel.dot(_v);                            // >0 = driving into the wall
+      if(vOut>0) c.vel.addScaledVector(_v, -vOut);         // remove the into-wall part -> slide along
+      c.vel.multiplyScalar(Math.exp(-1.2*dt));             // light scrape only (barely slows you)
+      c.pos.set(p.x + _v.x*limit, p.y + _v.y*limit);       // clamp to the curb (can't climb the sidewalk)
+      if(c.isPlayer && vOut>14){ camShake=Math.min(camShake+0.45,1.0);
+        sparks.emit(c.pos.x,0.5,c.pos.y,(Math.random()-.5)*4,1,(Math.random()-.5)*4,0.3,9);
+        if(navigator.vibrate){ try{navigator.vibrate(20);}catch(e){} } }
+    }
+  }
 
   // lap / checkpoint progress
   updateProgress(c, prev);
 
   // ----- mesh -----
   syncCarMesh(c);
-  const lateral=_l.length()*Math.sign(c.vel.dot(new THREE.Vector2(Math.cos(c.heading),-Math.sin(c.heading))));
+  const lateral=_l.length()*Math.sign(c.vel.dot(_r.set(Math.cos(c.heading),-Math.sin(c.heading))));
   c.rig.spinAcc += fwdSpeed*dt/0.55;
   c.rig.wheels.forEach(w=> w.rotation.x=c.rig.spinAcc);
   const vSteer=clamp(inp.steer,-1,1)*0.5;
@@ -787,7 +815,7 @@ function aiInput(c){
   const curve=Math.abs(angleDiff(Math.atan2(f.x-tx, f.y-tz), desired));
   const speed=c.vel.length();
   const brake = curve>0.55 && speed>26;
-  return { throttle:!brake, brake, steer, drift: curve>0.6 && speed>30, boost:false };
+  return { throttle:!brake, brake, steer, drift: curve>0.6 && speed>30, boost: !brake && curve<0.12 && c.boost>30 };
 }
 
 /* =========================================================================
@@ -801,14 +829,13 @@ function updateSunShadow(){
 }
 function updateCamera(dt){
   const c=player; _f.set(Math.sin(c.heading), Math.cos(c.heading));
-  const shake=c.boosting?(Math.random()-.5)*0.5:0;
-  const desired=new THREE.Vector3(
-    c.pos.x - _f.x*CONFIG.camDist + shake, CONFIG.camHeight + (c.boosting?-0.4:0),
-    c.pos.y - _f.y*CONFIG.camDist + shake);
+  const amt=(c.boosting?0.5:0)+camShake; camShake=Math.max(0,camShake-dt*3);
+  const sx=amt?(Math.random()-.5)*amt:0, sz=amt?(Math.random()-.5)*amt:0;
+  _cd.set(c.pos.x - _f.x*CONFIG.camDist + sx, CONFIG.camHeight + (c.boosting?-0.4:0), c.pos.y - _f.y*CONFIG.camDist + sz);
   const k=1-Math.exp(-CONFIG.camLerp*dt);
-  camera.position.lerp(desired, k);
-  const look=new THREE.Vector3(c.pos.x + _f.x*CONFIG.camLookAhead, 1.2, c.pos.y + _f.y*CONFIG.camLookAhead);
-  camera.lookAt(look);
+  camera.position.lerp(_cd, k);
+  _cl.set(c.pos.x + _f.x*CONFIG.camLookAhead, 1.2, c.pos.y + _f.y*CONFIG.camLookAhead);
+  camera.lookAt(_cl);
   const targetFov=c.boosting?CONFIG.fovBoost:(CONFIG.fovBase + Math.min(player.vel.length()/CONFIG.topSpeed,1)*5);
   camera.fov=lerp(camera.fov,targetFov,0.08); camera.updateProjectionMatrix();
 }
@@ -870,7 +897,7 @@ function showBest(){ elBest.classList.remove('show'); void elBest.offsetWidth; e
 function startGame(){
   audio.start();
   placeGrid();
-  bestLap=null; raceTime=0; countdown=3.0; goTimer=0; state='countdown';
+  bestLap=null; raceTime=0; countdown=3.0; goTimer=0; lastFlash=-1; state='countdown';
   elMenu.classList.add('hidden'); elResults.classList.add('hidden');
   skidPool.forEach(m=>m.visible=false);
   // snap camera behind player immediately
@@ -900,10 +927,10 @@ function update(dt){
     updateCamera(dt);
   } else if(state==='race'){
     raceTime+=dt; if(goTimer>0) goTimer-=dt; else if(elFlash.textContent==='GO!') elFlash.classList.remove('show');
-    const inp = window.__auto ? aiInput(player) : { throttle: keys.up || (isTouch && !keys.down), brake: keys.down,
+    const inp = window.__auto ? aiInput(player) : { throttle: keys.up || (isTouch && !keys.down && player.vel.length()<6), brake: keys.down,
       steer: clamp((keys.left?1:0)-(keys.right?1:0) + joyX, -1, 1), drift: keys.space, boost: keys.shift };
     updateCar(player, inp, dt);
-    for(let i=1;i<cars.length;i++){ cars[i].maxScale=0.94+clamp((player.lap*SAMPLES+player.trackIdx-(cars[i].lap*SAMPLES+cars[i].trackIdx))/SAMPLES,-0.06,0.12);
+    for(let i=1;i<cars.length;i++){ cars[i].maxScale=0.97+clamp((player.lap*SAMPLES+player.trackIdx-(cars[i].lap*SAMPLES+cars[i].trackIdx))/SAMPLES,-0.03,0.06);
       updateCar(cars[i], aiInput(cars[i]), dt); }
     resolveCollisions();
     updateCamera(dt); updateHUD();
@@ -925,13 +952,30 @@ function resolveCollisions(){
     if(d<3.0 && d>0.001){ _v.multiplyScalar(1/d); const push=(3.0-d)*0.5;
       a.pos.addScaledVector(_v,-push); b.pos.addScaledVector(_v,push);
       const va=a.vel.dot(_v), vb=b.vel.dot(_v);
-      a.vel.addScaledVector(_v,(vb-va)*0.5); b.vel.addScaledVector(_v,(va-vb)*0.5);
+      a.vel.addScaledVector(_v,(vb-va)*0.3); b.vel.addScaledVector(_v,(va-vb)*0.3);
+      if((a.isPlayer||b.isPlayer) && Math.abs(va-vb)>16){ camShake=Math.min(camShake+0.4,1.0);
+        const mx=(a.pos.x+b.pos.x)/2, mz=(a.pos.y+b.pos.y)/2;
+        sparks.emit(mx,0.6,mz,(Math.random()-.5)*5,1.2,(Math.random()-.5)*5,0.3,9);
+        if(navigator.vibrate){ try{navigator.vibrate(25);}catch(e){} } }
     }
   }
 }
 
+function buildComposer(){
+  if(typeof THREE.EffectComposer==='undefined' || typeof THREE.UnrealBloomPass==='undefined') return;
+  try{
+    composer=new THREE.EffectComposer(renderer);
+    composer.addPass(new THREE.RenderPass(scene,camera));
+    const res=new THREE.Vector2(Math.round(innerWidth*(isTouch?0.5:0.75)), Math.round(innerHeight*(isTouch?0.5:0.75)));
+    bloomPass=new THREE.UnrealBloomPass(res, isTouch?0.55:0.7, 0.4, 0.82);  // strength, radius, threshold
+    composer.addPass(bloomPass);
+    composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));    // linear -> sRGB at the very end
+    composer.setSize(innerWidth, innerHeight);
+  }catch(e){ composer=null; }
+}
 function animate(){ requestAnimationFrame(animate);
-  const dt=Math.min(clock.getDelta(),0.05); update(dt); renderer.render(scene,camera); }
+  const dt=Math.min(clock.getDelta(),0.05); update(dt);
+  if(composer) composer.render(); else renderer.render(scene,camera); }
 
 /* =========================================================================
    INPUT
@@ -944,8 +988,8 @@ function bindKeys(){
     if(map[e.code]!==undefined){ keys[map[e.code]]=true; e.preventDefault(); }
     if(e.code==='Enter' && (state==='menu')) startGame();
     if(e.code==='KeyR' && (state==='finished'||state==='race')) startGame();
-    if(e.code==='Escape' && state==='race'){ state='paused'; }
-    else if(e.code==='Escape' && state==='paused'){ state='race'; }
+    if(e.code==='Escape' && state==='race'){ state='paused'; flash('PAUSED'); }
+    else if(e.code==='Escape' && state==='paused'){ state='race'; elFlash.classList.remove('show'); }
   });
   addEventListener('keyup', e=>{ if(map[e.code]!==undefined){ keys[map[e.code]]=false; e.preventDefault(); } });
 }
@@ -968,7 +1012,9 @@ function initJoystick(){
     let dx=cx-(r.left+r.width/2), dy=cy-(r.top+r.height/2);
     const len=Math.hypot(dx,dy); if(len>R){ dx*=R/len; dy*=R/len; }
     knob.style.transform=`translate(${dx}px,${dy}px)`;
-    joyX = -clamp(dx/R,-1,1);                        // push right => turn right (same sign as the keys)
+    let nx=clamp(dx/R,-1,1), m=Math.abs(nx), dead=0.12;            // deadzone + ease for finer steering
+    m = m<dead ? 0 : Math.pow((m-dead)/(1-dead), 1.4);
+    joyX = -Math.sign(nx)*m;                          // push right => turn right (same sign as the keys)
   };
   const reset=()=>{ active=false; pid=null; joyX=0; knob.style.transform='translate(0,0)'; };
   base.addEventListener('pointerdown', e=>{ active=true; pid=e.pointerId;
@@ -991,8 +1037,8 @@ function init(){
   scene=new THREE.Scene();
   scene.fog=new THREE.Fog(CONFIG.colors.fog, 120, 760);
   camera=new THREE.PerspectiveCamera(CONFIG.fovBase, innerWidth/innerHeight, 0.5, 3000);
-  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('game'), antialias:true});
-  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer=new THREE.WebGLRenderer({canvas:document.getElementById('game'), antialias:!isTouch});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch?1.5:2));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.18;
@@ -1036,12 +1082,14 @@ function init(){
   // debug hooks for automated verification
   window.GAME={ get state(){return state;}, get player(){return player;}, get cars(){return cars;},
     get joyX(){return joyX;}, setJoy:(v)=>{joyX=v;}, sceneCount:()=>scene.children.length,
-    press:(k,v)=>{keys[k]=v;}, start:startGame };
+    get bloom(){return !!composer;}, press:(k,v)=>{keys[k]=v;}, start:startGame };
 
+  buildComposer();
   animate();
 }
 function onResize(){ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); checkOrient(); }
+  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch?1.5:2)); renderer.setSize(innerWidth, innerHeight);
+  if(composer) composer.setSize(innerWidth, innerHeight); checkOrient(); }
 function checkOrient(){ document.body.classList.toggle('portrait', isTouch && innerHeight>innerWidth); }
 
 init();
