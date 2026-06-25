@@ -463,85 +463,153 @@ function distToTrackApprox(x,z){
   let best=Infinity; for(let i=0;i<SAMPLES;i+=4){ const p=samplePts[i];
     const dx=p.x-x,dz=p.y-z,d=dx*dx+dz*dz; if(d<best)best=d; } return Math.sqrt(best);
 }
-// ---- GTA-style city: street-grid ground + lit-window buildings + palms ----
+// ---- NYC/Chicago-style city: street grid + mixed-use businesses + signage ----
 function makeCityGroundTexture(){
-  const c=document.createElement('canvas'); c.width=c.height=256; const x=c.getContext('2d');
-  x.fillStyle='#2b2e34'; x.fillRect(0,0,256,256);                 // asphalt = the streets
-  const n=4, cell=256/n, pad=15;
+  const S=512, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  x.fillStyle='#22242a'; x.fillRect(0,0,S,S);                       // street asphalt
+  const n=3, cell=S/n, road=cell*0.32;
   for(let i=0;i<n;i++) for(let j=0;j<n;j++){
-    const r=Math.random();
-    x.fillStyle = r<0.16?'#3f6b3a' : (r<0.30?'#43464e':'#34373d'); // parks + concrete blocks
-    x.fillRect(i*cell+pad, j*cell+pad, cell-pad*2, cell-pad*2);
-    x.strokeStyle='rgba(0,0,0,.28)'; x.lineWidth=2; x.strokeRect(i*cell+pad, j*cell+pad, cell-pad*2, cell-pad*2);
+    const bx=i*cell+road/2, by=j*cell+road/2, bw=cell-road, bh=cell-road;
+    x.fillStyle='#676a71'; x.fillRect(bx,by,bw,bh);                 // concrete sidewalk
+    x.fillStyle='#393c43'; x.fillRect(bx+5,by+5,bw-10,bh-10);       // building lot
   }
-  x.fillStyle='rgba(240,220,120,.45)';                            // faint lane dashes
-  for(let i=0;i<=n;i++) for(let d=2; d<256; d+=18){ x.fillRect(i*cell-1,d,2,8); x.fillRect(d,i*cell-1,8,2); }
+  x.strokeStyle='rgba(240,210,90,.45)'; x.lineWidth=2; x.setLineDash([11,13]); // lane dashes down streets
+  for(let i=0;i<n;i++){ x.beginPath(); x.moveTo(i*cell,0); x.lineTo(i*cell,S); x.stroke();
+    x.beginPath(); x.moveTo(0,i*cell); x.lineTo(S,i*cell); x.stroke(); }
+  x.setLineDash([]);
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
+}
+// a building facade (upper floors) by material type, with lit windows
+function makeFacadeTexture(rng, type){
+  const S=256, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  const base = type==='brick'?'#7a3b2e' : type==='glass'?'#2a4a5a' : type==='concrete'?'#7d7f86'
+             : type==='limestone'?'#b9a888' : type==='dark'?'#23262e' : '#9a5a36'; // terracotta
+  x.fillStyle=base; x.fillRect(0,0,S,S);
+  if(type==='brick'||type==='terracotta'){ x.strokeStyle='rgba(0,0,0,.16)'; x.lineWidth=1;
+    for(let yy=0;yy<S;yy+=8){ x.beginPath(); x.moveTo(0,yy); x.lineTo(S,yy); x.stroke(); } }
+  const glassy = type==='glass'||type==='dark';
+  const cols=glassy?6:4, rows=10, pad=14, gap=glassy?2:8;
+  const ww=(S-pad*2-gap*(cols-1))/cols, wh=(S-pad*2-gap*(rows-1))/rows;
+  for(let r=0;r<rows;r++) for(let cc=0;cc<cols;cc++){
+    const bx=pad+cc*(ww+gap), by=pad+r*(wh+gap), lit=rng()>(type==='dark'?0.45:0.6);
+    x.fillStyle = glassy ? (lit?(rng()>0.5?'#ffe6a8':'#bfe0ff'):'#1b2b38') : (lit?'#ffe6a8':'#2c2f37');
+    x.fillRect(bx,by,ww,wh);
+    if(!glassy){ x.strokeStyle='rgba(0,0,0,.3)'; x.lineWidth=1; x.strokeRect(bx,by,ww,wh); }
+  }
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
+}
+// a ground-floor storefront: signage + awning + lit display windows
+function makeStorefrontTexture(rng, biz){
+  const W=512,H=256, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
+  x.fillStyle=biz.wall; x.fillRect(0,0,W,H);                        // wall above shop
+  const fascia=H*0.26;
+  x.fillStyle=biz.sign; x.fillRect(0,0,W,fascia);                   // signage band
+  x.fillStyle=biz.text; x.font='bold '+Math.floor(fascia*0.62)+'px Arial'; x.textAlign='center'; x.textBaseline='middle';
+  x.fillText(biz.name, W/2, fascia*0.52);
+  const ah=H*0.12;                                                  // striped awning
+  for(let s=0;s<W;s+=26){ x.fillStyle=(Math.floor(s/26)%2)?biz.awn1:biz.awn2; x.fillRect(s,fascia,26,ah); }
+  const gy=fascia+ah, gh=H-gy;
+  x.fillStyle='#0c1a1f'; x.fillRect(0,gy,W,gh);                     // glazing base
+  for(let s=10;s<W-10;s+=120){ x.fillStyle='#ffe9b0'; x.fillRect(s,gy+8,96,gh-16);
+    x.strokeStyle='#26201a'; x.lineWidth=4; x.strokeRect(s,gy+8,96,gh-16); }
+  x.fillStyle='#2a1c0c'; x.fillRect(W/2-22,gy+gh*0.22,44,gh*0.78); // door
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.ClampToEdgeWrapping;
+  if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
+}
+function makeBillboardTexture(i){
+  const W=256,H=128, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
+  const ads=[['#0a0a2a','#ff2d95','EAT @ JOE’S'],['#160a2a','#39ff14','CITY LIVE'],
+             ['#2a0a0a','#ffcf33','MEGA SALE'],['#0a1a2a','#33d6ff','SKYLINE'],['#1a0a18','#ff7a3c','NEON ST']];
+  const a=ads[i%ads.length]; x.fillStyle=a[0]; x.fillRect(0,0,W,H);
+  x.strokeStyle=a[1]; x.lineWidth=6; x.strokeRect(8,8,W-16,H-16);
+  x.fillStyle=a[1]; x.font='bold 40px Arial'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(a[2],W/2,H/2);
   const t=new THREE.CanvasTexture(c); if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
 }
-function makeWindowTextures(rng){
-  const mk=()=>{ const c=document.createElement('canvas'); c.width=c.height=64; return [c,c.getContext('2d')]; };
-  const [cm,xm]=mk(), [ce,xe]=mk();
-  xm.fillStyle='#8b919c'; xm.fillRect(0,0,64,64);                 // facade (tinted per building)
-  xe.fillStyle='#000'; xe.fillRect(0,0,64,64);                    // emissive: black except lit windows
-  const cols=4, rows=6, pad=6, gap=3;
-  const ww=(64-pad*2-gap*(cols-1))/cols, wh=(64-pad*2-gap*(rows-1))/rows;
-  for(let r=0;r<rows;r++) for(let cc=0;cc<cols;cc++){
-    const bx=pad+cc*(ww+gap), by=pad+r*(wh+gap), lit=rng()>0.5;
-    xm.fillStyle=lit?'#ffe6a8':'#3a3f49'; xm.fillRect(bx,by,ww,wh);
-    if(lit){ xe.fillStyle='#ffdf9e'; xe.fillRect(bx,by,ww,wh); }
-  }
-  const tm=new THREE.CanvasTexture(cm), te=new THREE.CanvasTexture(ce);
-  tm.magFilter=te.magFilter=THREE.NearestFilter;
-  if('encoding' in tm) tm.encoding=THREE.sRGBEncoding;   // albedo = sRGB (emissive map stays linear)
-  return { map:tm, emis:te };
-}
 function buildTerrain(){
-  const tex=makeCityGroundTexture();
-  tex.wrapS=tex.wrapT=THREE.RepeatWrapping; tex.repeat.set(10,10);
+  const tex=makeCityGroundTexture(); tex.repeat.set(14,14);         // ~57-unit blocks, matches the building grid
   const g=new THREE.PlaneGeometry(2400,2400); g.rotateX(-Math.PI/2);
-  const m=new THREE.MeshStandardMaterial({map:tex, roughness:0.95, metalness:0});
-  const mesh=new THREE.Mesh(g,m); mesh.receiveShadow=true; scene.add(mesh);
+  const mesh=new THREE.Mesh(g, new THREE.MeshStandardMaterial({map:tex, roughness:0.95, metalness:0}));
+  mesh.receiveShadow=true; scene.add(mesh);
 }
 function buildCity(rng){
-  const w=makeWindowTextures(rng);
-  const geo=new THREE.BoxGeometry(1,1,1); geo.translate(0,0.5,0);  // unit box, base on ground
-  const mat=new THREE.MeshStandardMaterial({ map:w.map, emissiveMap:w.emis,
-    emissive:0xffd98a, emissiveIntensity:0.9, roughness:0.82, metalness:0.05 });
-  const block=58, span=820, list=[];
+  const TYPES=['brick','glass','concrete','limestone','dark','terracotta'];
+  const facadeTex=TYPES.map(t=>makeFacadeTexture(rng,t));
+  const BIZ=[
+    {name:"MARIO’S PIZZA", sign:'#c0392b', wall:'#6b4a3a', awn1:'#1e8449', awn2:'#f4f4f4', text:'#fff'},
+    {name:'CITY DELI',     sign:'#1f6f3f', wall:'#5a5048', awn1:'#1f6f3f', awn2:'#f4f4f4', text:'#fff'},
+    {name:'METRO BANK',    sign:'#114a8a', wall:'#7d7f86', awn1:'#114a8a', awn2:'#cdd6e0', text:'#fff'},
+    {name:'BLUE NOTE CAFE',sign:'#3a2a1a', wall:'#4a3a2a', awn1:'#6b4a2a', awn2:'#d9c4a0', text:'#ffd98a'},
+    {name:'RX PHARMACY',   sign:'#0f7a8a', wall:'#9aa0a8', awn1:'#0f7a8a', awn2:'#ffffff', text:'#fff'},
+    {name:'GRAND HOTEL',   sign:'#7a1f5a', wall:'#8a7a6a', awn1:'#7a1f5a', awn2:'#e0c4d4', text:'#ffd98a'},
+    {name:'24HR MARKET',   sign:'#d35400', wall:'#5a5048', awn1:'#d35400', awn2:'#f4f4f4', text:'#fff'},
+    {name:'NEON BAR',      sign:'#8e2de2', wall:'#23262e', awn1:'#8e2de2', awn2:'#2a2a3a', text:'#ff5ad0'},
+  ];
+  const storeTex=BIZ.map(b=>makeStorefrontTexture(rng,b));
+  const towers=facadeTex.map(()=>[]), stores=storeTex.map(()=>[]), waterTowers=[], billboards=[];
+  const baseH=5, block=58, span=820, _c=new THREE.Color();
   for(let gx=-span; gx<=span; gx+=block) for(let gz=-span; gz<=span; gz+=block){
     const x=gx+(rng()-0.5)*8, z=gz+(rng()-0.5)*8;
-    if(rng()<0.12) continue;                                       // empty lot / plaza
-    const fw=18+rng()*22, fd=18+rng()*22;
-    // footprint-aware: the building's far CORNER must stay off the road + sidewalk (no overhang)
+    if(rng()<0.10) continue;                                        // empty lot / plaza
+    const fw=16+rng()*22, fd=16+rng()*22;
     if(distToTrackApprox(x,z) < CONFIG.roadHalfWidth + Math.hypot(fw,fd)*0.5 + 5.5) continue; // clear road + sidewalk
-    const distC=Math.hypot(x-trackCentroid.x, z-trackCentroid.y);
-    const downtown=clamp(1-distC/520,0,1);
-    const h=8 + downtown*54 + rng()*rng()*42;                      // taller downtown + random spikes
-    list.push({ x, z, h, fw, fd, tint:0.55+rng()*0.5 });
+    const distC=Math.hypot(x-trackCentroid.x, z-trackCentroid.y), downtown=clamp(1-distC/520,0,1);
+    const towerH=4 + downtown*52 + rng()*rng()*40;
+    const fi = downtown>0.5 ? (rng()>0.5?1:4) : Math.floor(rng()*TYPES.length); // downtown = glass/dark towers
+    const si = Math.floor(rng()*storeTex.length), tint=0.62+rng()*0.38;
+    const baseMtx=new THREE.Matrix4().makeScale(fw,baseH,fd); baseMtx.setPosition(x,0,z); stores[si].push({mtx:baseMtx,tint});
+    const towerMtx=new THREE.Matrix4().makeScale(fw*0.97,towerH,fd*0.97); towerMtx.setPosition(x,baseH,z); towers[fi].push({mtx:towerMtx,tint});
+    if(towerH>26 && rng()>0.55) waterTowers.push({x,z,top:baseH+towerH});
+    if(rng()>0.86) billboards.push({x,z,y:baseH+Math.min(towerH,30)*0.7,fw,fd});
   }
-  const inst=new THREE.InstancedMesh(geo, mat, list.length);
-  const mtx=new THREE.Matrix4(), col=new THREE.Color();
-  for(let i=0;i<list.length;i++){ const b=list[i];
-    mtx.makeScale(b.fw, b.h, b.fd); mtx.setPosition(b.x, 0, b.z); inst.setMatrixAt(i, mtx);
-    col.setRGB(b.tint*0.60, b.tint*0.65, b.tint*0.74); inst.setColorAt(i, col);
-  }
-  inst.instanceMatrix.needsUpdate=true; if(inst.instanceColor) inst.instanceColor.needsUpdate=true;
-  inst.castShadow=!isTouch; inst.receiveShadow=!isTouch; scene.add(inst);
+  const box=new THREE.BoxGeometry(1,1,1); box.translate(0,0.5,0);
+  const addInst=(tex,arr,emI,rough,metal)=>{ if(!arr.length) return;
+    const mat=new THREE.MeshStandardMaterial({map:tex, emissiveMap:tex, emissive:0xfff0d0, emissiveIntensity:emI, roughness:rough, metalness:metal});
+    const m=new THREE.InstancedMesh(box, mat, arr.length);
+    arr.forEach((b,k)=>{ m.setMatrixAt(k,b.mtx); _c.setScalar(b.tint); m.setColorAt(k,_c); });
+    m.instanceMatrix.needsUpdate=true; if(m.instanceColor) m.instanceColor.needsUpdate=true;
+    m.castShadow=!isTouch; m.receiveShadow=!isTouch; scene.add(m); };
+  facadeTex.forEach((tex,fi)=>{ const g=TYPES[fi]==='glass'||TYPES[fi]==='dark'; addInst(tex,towers[fi],0.28, g?0.25:0.85, g?0.4:0.05); });
+  storeTex.forEach((tex,si)=> addInst(tex,stores[si],0.42,0.7,0.05));
+  // NYC rooftop water towers
+  if(waterTowers.length){ const _m=new THREE.Matrix4();
+    const tankMat=new THREE.MeshStandardMaterial({color:0x5a4636, roughness:0.9});
+    const tank=new THREE.InstancedMesh(new THREE.CylinderGeometry(1.4,1.6,2.6,8), tankMat, waterTowers.length);
+    const cone=new THREE.InstancedMesh(new THREE.ConeGeometry(1.7,1.1,8), tankMat, waterTowers.length);
+    waterTowers.forEach((w,k)=>{ _m.makeTranslation(w.x,w.top+1.6,w.z); tank.setMatrixAt(k,_m); _m.makeTranslation(w.x,w.top+3.4,w.z); cone.setMatrixAt(k,_m); });
+    tank.instanceMatrix.needsUpdate=cone.instanceMatrix.needsUpdate=true; tank.castShadow=cone.castShadow=!isTouch;
+    scene.add(tank); scene.add(cone); }
+  // glowing billboards on the road-facing walls
+  billboards.slice(0,16).forEach((b,k)=>{
+    const tex=makeBillboardTexture(k);
+    const mat=new THREE.MeshStandardMaterial({map:tex, emissiveMap:tex, emissive:0xffffff, emissiveIntensity:1.5, side:THREE.DoubleSide, roughness:0.5});
+    const bw=Math.min(b.fw,14), pl=new THREE.Mesh(new THREE.PlaneGeometry(bw,bw*0.5), mat);
+    const dx=trackCentroid.x-b.x, dz=trackCentroid.y-b.z, dl=Math.hypot(dx,dz)||1, ox=dx/dl, oz=dz/dl;
+    pl.position.set(b.x+ox*(b.fw*0.5+0.3), b.y, b.z+oz*(b.fd*0.5+0.3)); pl.rotation.y=Math.atan2(ox,oz); scene.add(pl);
+  });
 }
-function buildPalms(rng){
-  const trunkMat=new THREE.MeshStandardMaterial({color:0x7a5a36, flatShading:true, roughness:1});
-  const leafMat=new THREE.MeshStandardMaterial({color:0x3f8a44, flatShading:true, roughness:1});
-  for(let k=0;k<16;k++){
-    const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>0.5?1:-1, off=CONFIG.roadHalfWidth+2.4+rng()*1.8;
-    const x=p.x+n.x*off*side, z=p.y+n.y*off*side;   // on the sidewalk verge (Vice-City palms)
-    const grp=new THREE.Group(), hh=6+rng()*4;
-    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.45,hh,6), trunkMat); trunk.position.y=hh/2; grp.add(trunk);
-    for(let a=0;a<4;a++){ const leaf=new THREE.Mesh(new THREE.ConeGeometry(0.45,3.0,4), leafMat);
-      leaf.position.y=hh+0.4; leaf.rotation.y=a*Math.PI/2; leaf.rotation.x=1.0; grp.add(leaf); }
-    grp.position.set(x,0,z); grp.traverse(o=>o.castShadow=!isTouch); scene.add(grp);
-  }
+function buildStreetFurniture(rng){
+  // streetlights along the road (glowing lamps -> bloom)
+  const poles=[];
+  for(let i=0;i<SAMPLES;i+=24){ const p=samplePts[i], n=sampleNorm[i], side=((i/24)%2)?1:-1, off=CONFIG.roadHalfWidth+2.6;
+    poles.push({x:p.x+n.x*off*side, z:p.y+n.y*off*side}); }
+  const _m=new THREE.Matrix4();
+  const poleGeo=new THREE.CylinderGeometry(0.18,0.22,7,6); poleGeo.translate(0,3.5,0);
+  const pole=new THREE.InstancedMesh(poleGeo, new THREE.MeshStandardMaterial({color:0x2a2a30, roughness:0.7, metalness:0.4}), poles.length);
+  const lamp=new THREE.InstancedMesh(new THREE.SphereGeometry(0.45,8,6), new THREE.MeshStandardMaterial({color:0xfff2c0, emissive:0xffe08a, emissiveIntensity:2.0}), poles.length);
+  poles.forEach((q,k)=>{ _m.makeTranslation(q.x,0,q.z); pole.setMatrixAt(k,_m); _m.makeTranslation(q.x,7,q.z); lamp.setMatrixAt(k,_m); });
+  pole.instanceMatrix.needsUpdate=lamp.instanceMatrix.needsUpdate=true; pole.castShadow=!isTouch; scene.add(pole); scene.add(lamp);
+  // a few street trees
+  const trunkMat=new THREE.MeshStandardMaterial({color:0x5a3f28, roughness:1});
+  const leafMat=new THREE.MeshStandardMaterial({color:0x2f6b34, flatShading:true, roughness:1});
+  for(let k=0;k<14;k++){ const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>0.5?1:-1, off=CONFIG.roadHalfWidth+3+rng()*1.2;
+    const g=new THREE.Group();
+    const tr=new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.32,3,6), trunkMat); tr.position.y=1.5; g.add(tr);
+    const cn=new THREE.Mesh(new THREE.IcosahedronGeometry(1.8,0), leafMat); cn.position.y=4; g.add(cn);
+    g.position.set(p.x+n.x*off*side,0,p.y+n.y*off*side); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); }
 }
-function scatterProps(){ const rng=mulberry32(7777); buildCity(rng); buildPalms(rng); }
+function scatterProps(){ const rng=mulberry32(7777); buildCity(rng); buildStreetFurniture(rng); }
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
   t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 
