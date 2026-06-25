@@ -234,7 +234,7 @@ let trackRadius = 200;
 let dust, sparks, skidPool = [], skidCursor = 0, skidShared;
 let audio;
 let sunLight=null, sunDirV=null, glowTex=null;
-let carBody=null, carReady=false, carYaw=0;   // realistic GLB car (swapped over the box placeholder)
+let carBodyRaw=null, carWheelRaw=null, carReady=false, carYaw=0;   // realistic GLB car (body + the pack's own wheels)
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0;
 let bestLap = null;
@@ -743,37 +743,47 @@ function makeCar(color, isPlayer){
     lineOffset:(Math.random()*2-1)*CONFIG.roadHalfWidth*0.4, maxScale:1, skidTimer:0 };
 }
 
-/* ---- realistic GLB car (MIT-licensed, web-optimized) swapped in over the box placeholder ---- */
+/* ---- realistic GLB car (MIT-licensed): body + the pack's OWN wheels at the artist's positions ---- */
 function loadCarModels(){
   if(typeof THREE.GLTFLoader==='undefined') return;
-  try{ new THREE.GLTFLoader().load('models/car-body.glb', g=>{
-    carBody=normalizeBody(g.scene); carReady=true; if(cars && cars.length) upgradeCars();
-  }, undefined, ()=>{ /* keep the box car if the model fails */ }); }catch(e){}
+  const L=new THREE.GLTFLoader();
+  try{ L.load('models/car-body.glb', gb=>{ carBodyRaw=gb.scene;
+    L.load('models/car-wheel.glb', gw=>{ carWheelRaw=gw.scene; carReady=true; if(cars&&cars.length) upgradeCars(); },
+      undefined, ()=>{ carReady=true; if(cars&&cars.length) upgradeCars(); });   // body-only if wheels fail
+  }, undefined, ()=>{}); }catch(e){}
 }
-function normalizeBody(obj){
-  obj.updateMatrixWorld(true);
-  const box=new THREE.Box3().setFromObject(obj), size=new THREE.Vector3(), ctr=new THREE.Vector3();
-  box.getSize(size); box.getCenter(ctr);
-  const rotY=(size.x>size.z)?Math.PI/2:0;                // make the long axis = Z (car length)
-  const sc=4.4/Math.max(size.x,size.z,0.001);            // scale to ~4.4 units long
-  obj.position.set(-ctr.x, -box.min.y, -ctr.z);          // centre XZ + sit base on the ground
-  obj.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false; if(o.material) o.material.envMapIntensity=1.3; } });
-  const inner=new THREE.Group(); inner.add(obj); inner.rotation.y=rotY;
-  const outer=new THREE.Group(); outer.scale.setScalar(sc); outer.add(inner);
-  return outer;                                          // outer.rotation.y stays free for carYaw tuning
-}
+// wheel layout taken straight from the car pack's own scene (mapped to +Z = forward)
+const CAR_WHEELS=[
+  {x:-0.854, y:0.340, z: 1.500, front:true },   // front-left  (steering)
+  {x: 0.949, y:0.340, z: 1.500, front:true },   // front-right (steering)
+  {x:-0.855, y:0.287, z:-1.264, front:false},   // rear-left
+  {x: 0.949, y:0.287, z:-1.264, front:false},   // rear-right
+];
 function upgradeCars(){
-  if(!carBody) return;
-  const bb=new THREE.Box3().setFromObject(carBody), s=new THREE.Vector3(); bb.getSize(s);
-  const wx=Math.max(0.72, s.x*0.5-0.12);                 // sit the wheels at the body's width
-  cars.forEach(c=>{ const rig=c.rig;
-    rig.chassis.clear();                                  // drop the box body + glow sprites
-    const body=carBody.clone();
-    body.traverse(o=>{ if(o.isMesh && o.material && o.material.name==='body'){   // glossy paint, one colour per car
-      o.material=o.material.clone(); o.material.color.set(c.color);
-      o.material.metalness=0.45; o.material.roughness=0.2; o.material.envMapIntensity=1.4; } });
-    body.rotation.y=carYaw; rig.chassis.add(body);
-    rig.wheels.forEach(w=> w.position.x=(w.position.x<0?-1:1)*wx );
+  if(!carBodyRaw) return;
+  cars.forEach(c=>{
+    const rig=c.rig;
+    [...rig.group.children].forEach(o=> rig.group.remove(o));   // wipe the box placeholder
+    const asm=new THREE.Group();
+    // body with per-car glossy paint
+    const chassis=new THREE.Group();
+    const body=carBodyRaw.clone();
+    body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false;
+      if(o.material){ if(o.material.name==='body'){ o.material=o.material.clone(); o.material.color.set(c.color); o.material.metalness=0.5; o.material.roughness=0.18; } o.material.envMapIntensity=1.4; } } });
+    chassis.add(body); asm.add(chassis);
+    // the pack's own wheels at the artist's exact positions (spin via rotation.x, steer fronts via rotation.y)
+    const wheels=[], front=[];
+    CAR_WHEELS.forEach(wp=>{ const wg=new THREE.Group(); wg.position.set(wp.x,wp.y,wp.z); wg.rotation.order='YXZ';
+      if(carWheelRaw){ const wm=carWheelRaw.clone(); wm.traverse(o=>{ if(o.isMesh){ o.castShadow=true; if(o.material) o.material.envMapIntensity=1.2; } }); wg.add(wm); }
+      else { wg.add(new THREE.Mesh(new THREE.CylinderGeometry(0.37,0.37,0.34,16).rotateZ(Math.PI/2), new THREE.MeshStandardMaterial({color:0x101013,roughness:.85}))); }
+      asm.add(wg); wheels.push(wg); if(wp.front) front.push(wg); });
+    // centre + sit on ground + scale the WHOLE car as one unit -> body & wheels keep the artist's proportions
+    const bb=new THREE.Box3().setFromObject(asm), sz=new THREE.Vector3(), ctr=new THREE.Vector3(); bb.getSize(sz); bb.getCenter(ctr);
+    asm.position.set(-ctr.x, -bb.min.y, -ctr.z);
+    const sc=4.5/Math.max(sz.x,sz.z,0.001);
+    const scaleG=new THREE.Group(); scaleG.scale.setScalar(sc); scaleG.rotation.y=carYaw; scaleG.add(asm);
+    rig.group.add(scaleG);
+    rig.chassis=chassis; rig.wheels=wheels; rig.front=front; rig.spinAcc=0;
     if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
   });
 }
