@@ -472,18 +472,14 @@ function distToTrackApprox(x,z){
 }
 // ---- NYC/Chicago-style city: street grid + mixed-use businesses + signage ----
 function makeCityGroundTexture(){
-  const S=512, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
-  x.fillStyle='#22242a'; x.fillRect(0,0,S,S);                       // street asphalt
-  const n=3, cell=S/n, road=cell*0.32;
-  for(let i=0;i<n;i++) for(let j=0;j<n;j++){
-    const bx=i*cell+road/2, by=j*cell+road/2, bw=cell-road, bh=cell-road;
-    x.fillStyle='#676a71'; x.fillRect(bx,by,bw,bh);                 // concrete sidewalk
-    x.fillStyle='#393c43'; x.fillRect(bx+5,by+5,bw-10,bh-10);       // building lot
-  }
-  x.strokeStyle='rgba(240,210,90,.45)'; x.lineWidth=2; x.setLineDash([11,13]); // lane dashes down streets
-  for(let i=0;i<n;i++){ x.beginPath(); x.moveTo(i*cell,0); x.lineTo(i*cell,S); x.stroke();
-    x.beginPath(); x.moveTo(0,i*cell); x.lineTo(S,i*cell); x.stroke(); }
-  x.setLineDash([]);
+  // plain urban pavement — NO painted streets/lane markings (the racetrack is the only road)
+  const S=256, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  x.fillStyle='#33363d'; x.fillRect(0,0,S,S);
+  const n=4, cell=S/n;                                              // subtle paving slabs
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++){ const v=(Math.random()*14-7)|0;
+    x.fillStyle='rgb('+(48+v)+','+(51+v)+','+(58+v)+')'; x.fillRect(i*cell+1,j*cell+1,cell-2,cell-2); }
+  for(let k=0;k<1600;k++){ const v=(Math.random()*26-13)|0;        // grain
+    x.fillStyle='rgba('+(46+v)+','+(49+v)+','+(56+v)+',0.4)'; x.fillRect(Math.random()*S|0,Math.random()*S|0,2,2); }
   const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping;
   if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
 }
@@ -904,7 +900,12 @@ function updateCar(c, inp, dt){
       }
       if(c.skidTimer<=0 && skidPool.length){ dropSkid(rx,rz,c.heading); c.skidTimer=0.03; }
     }
-    if(c.boosting){ sparks.emit(rx,0.6,rz,(Math.random()-.5)*3,0.5,(Math.random()-.5)*3-Math.cos(c.heading)*4,0.4,10+Math.random()*8); }
+    if(c.boosting){                                               // flames out the rear exhaust tips
+      const fwx=Math.sin(c.heading), fwz=Math.cos(c.heading), rix=Math.cos(c.heading), riz=-Math.sin(c.heading);
+      const bx2=c.pos.x-fwx*2.25, bz2=c.pos.y-fwz*2.25;           // rear of the car
+      for(let s=-1;s<=1;s+=2){ const exx=bx2+rix*0.45*s, ezz=bz2+riz*0.45*s;
+        for(let k=0;k<2;k++) sparks.emit(exx,0.5,ezz, -fwx*7+(Math.random()-.5)*2, 0.5+Math.random()*0.8, -fwz*7+(Math.random()-.5)*2, 0.30, 8+Math.random()*8); }
+    }
   }
 }
 
