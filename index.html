@@ -26,12 +26,14 @@
   #posBox .p{ font-size:26px; line-height:1; } #posBox .s{ font-size:11px; opacity:.8; }
   #mapBox{ top:env(safe-area-inset-top,10px); right:14px; padding:7px; }
   #map{ display:block; border-radius:8px; }
-  #speedBox{ bottom:calc(env(safe-area-inset-bottom,12px) + 6px); left:50%; transform:translateX(-50%);
-             padding:6px 18px 9px; text-align:center; min-width:150px; }
-  #speed{ font-size:40px; line-height:.95; }
-  #speed small{ font-size:13px; opacity:.75; font-weight:normal; }
-  #boostWrap{ margin-top:6px; height:9px; width:150px; background:rgba(0,0,0,.4); border-radius:6px; overflow:hidden; }
-  #boostBar{ height:100%; width:100%; border-radius:6px;
+  #speedBox{ position:absolute; bottom:calc(env(safe-area-inset-bottom,10px) + 2px); left:50%; transform:translateX(-50%);
+             width:148px; height:148px; }
+  #speedo{ display:block; width:148px; height:148px; }
+  #speedNum{ position:absolute; left:0; right:0; top:47%; transform:translateY(-50%); text-align:center;
+             font-size:40px; font-weight:900; line-height:1; text-shadow:0 2px 10px rgba(0,0,0,.7); }
+  #speedUnit{ position:absolute; left:0; right:0; top:63%; text-align:center; font-size:10px; letter-spacing:3px; opacity:.6; }
+  #boostWrap{ position:absolute; left:32px; right:32px; bottom:22px; height:6px; background:rgba(0,0,0,.45); border-radius:4px; overflow:hidden; }
+  #boostBar{ height:100%; width:100%; border-radius:4px;
              background:linear-gradient(90deg,#ff5a3c,#ffd23b); transition:width .08s linear; }
   #boostWrap.charging #boostBar{ background:linear-gradient(90deg,#3ca0ff,#7ce0ff); }
 
@@ -118,7 +120,8 @@
        <div class="time" id="curTime">0:00.0</div><div class="best" id="bestTime">BEST --</div></div>
   <div id="posBox" class="panel"><div class="p" id="posNow">1<span style="font-size:14px">st</span></div><div class="s" id="posOf">of 4</div></div>
   <div id="mapBox" class="panel"><canvas id="map" width="130" height="130"></canvas></div>
-  <div id="speedBox" class="panel"><div id="speed">0<small> km/h</small></div>
+  <div id="speedBox"><canvas id="speedo" width="148" height="148"></canvas>
+       <div id="speedNum">0</div><div id="speedUnit">KM / H</div>
        <div id="boostWrap"><div id="boostBar"></div></div></div>
 </div>
 <div id="flash"></div>
@@ -211,8 +214,8 @@ const CONFIG = {
   wallPush: 60,         // (legacy; curb-slide handled in updateCar)
 
   // camera
-  camDist: 12, camHeight: 5.4, camLerp: 5.0, camLookAhead: 7,
-  fovBase: 64, fovBoost: 74,
+  camDist: 11, camHeight: 4.7, camLerp: 5.0, camLookAhead: 7.5,
+  fovBase: 66, fovBoost: 82,
 
   colors: {
     skyTop: 0x3a2160, skyBot: 0xff9a5a, sun: 0xfff2c0,
@@ -249,7 +252,7 @@ let joyX = 0;   // analog steering from the on-screen joystick (-1..1; + = left,
 const _v = new THREE.Vector2(), _f = new THREE.Vector2(), _l = new THREE.Vector2(), _r = new THREE.Vector2();
 const _cd = new THREE.Vector3(), _cl = new THREE.Vector3();   // camera scratch (no per-frame allocs)
 let camShake = 0;                       // decaying camera-shake impulse
-let composer = null, bloomPass = null;  // post-processing (bloom)
+let composer = null, bloomPass = null, cinePass = null;  // post-processing (bloom + cinematic grade/blur)
 
 /* =========================================================================
    PARTICLES  — soft round points that fade per-particle (custom shader)
@@ -427,7 +430,7 @@ function buildTrackMeshes(){
     t.repeat.set(CONFIG.roadHalfWidth*0.55,0.32); t.anisotropy=aniso; return t; };
   const roadMat=new THREE.MeshStandardMaterial({ map:roadMap,
     normalMap:grain('textures/road_normal.jpg'), normalScale:new THREE.Vector2(0.8,0.8),
-    roughnessMap:grain('textures/road_rough.jpg'), roughness:0.88, metalness:0.0,
+    roughnessMap:grain('textures/road_rough.jpg'), roughness:0.42, metalness:0.1,
     emissiveMap:roadMap, emissive:0xffffff, emissiveIntensity:0.42 }); // self-light the lane markings at dusk (+ bloom-ready)
 
   scene.add(buildRibbon(CONFIG.roadHalfWidth, 0.07, null, null, null, 1, null, roadMat)); // textured road (v=world units)
@@ -960,8 +963,11 @@ function updateCamera(dt){
   camera.position.lerp(_cd, k);
   _cl.set(c.pos.x + _f.x*CONFIG.camLookAhead, 1.2, c.pos.y + _f.y*CONFIG.camLookAhead);
   camera.lookAt(_cl);
-  const targetFov=c.boosting?CONFIG.fovBoost:(CONFIG.fovBase + Math.min(player.vel.length()/CONFIG.topSpeed,1)*5);
+  const targetFov=(c.boosting?CONFIG.fovBoost:CONFIG.fovBase) + Math.min(player.vel.length()/CONFIG.topSpeed,1)*9;
   camera.fov=lerp(camera.fov,targetFov,0.08); camera.updateProjectionMatrix();
+  if(cinePass){ const sr=Math.min(player.vel.length()/CONFIG.topSpeed,1.4);   // speed-driven motion blur
+    const tgt=Math.min(Math.max(0,sr-0.32)*1.15 + (c.boosting?0.5:0), 1.4);
+    cinePass.uniforms.uBlur.value += (tgt-cinePass.uniforms.uBlur.value)*0.12; }
 }
 
 /* =========================================================================
@@ -992,19 +998,38 @@ function drawMap(){
 }
 const elLapNow=document.getElementById('lapNow'), elCurTime=document.getElementById('curTime'),
   elBestTime=document.getElementById('bestTime'), elPosNow=document.getElementById('posNow'),
-  elPosOf=document.getElementById('posOf'), elSpeed=document.getElementById('speed'),
+  elPosOf=document.getElementById('posOf'), elSpeedNum=document.getElementById('speedNum'),
   elBoostBar=document.getElementById('boostBar'), elBoostWrap=document.getElementById('boostWrap');
 function fmt(t){ if(t==null) return '--'; const m=Math.floor(t/60), s=(t%60); return m+':'+(s<10?'0':'')+s.toFixed(1); }
 function ordinal(n){ return n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th'); }
 function rankOf(c){ let r=1; const pc=c.lap*SAMPLES+c.trackIdx;
   cars.forEach(o=>{ if(o!==c && (o.lap*SAMPLES+o.trackIdx)>pc) r++; }); return r; }
+let speedoCtx;
+function initSpeedo(){ const cv=document.getElementById('speedo'); if(!cv) return; const dpr=Math.min(devicePixelRatio,2);
+  cv.width=148*dpr; cv.height=148*dpr; speedoCtx=cv.getContext('2d'); speedoCtx.scale(dpr,dpr); }
+function drawSpeedo(kmh, maxKmh){
+  const x=speedoCtx; if(!x) return; const cx=74, cy=74, R=60, a0=Math.PI*0.72, a1=Math.PI*2.28;
+  x.clearRect(0,0,148,148);
+  x.lineCap='round'; x.lineWidth=9;
+  x.strokeStyle='rgba(255,255,255,.12)'; x.beginPath(); x.arc(cx,cy,R,a0,a1); x.stroke();        // track
+  for(let i=0;i<=8;i++){ const a=a0+(a1-a0)*i/8, r1=R-12, r2=R-3;                                 // ticks
+    x.strokeStyle='rgba(255,255,255,.4)'; x.lineWidth=2; x.beginPath();
+    x.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1); x.lineTo(cx+Math.cos(a)*r2,cy+Math.sin(a)*r2); x.stroke(); }
+  const f=Math.min(kmh/maxKmh,1), af=a0+(a1-a0)*f;
+  const grad=x.createLinearGradient(8,8,140,140); grad.addColorStop(0,'#37d6ff'); grad.addColorStop(0.55,'#ffd23b'); grad.addColorStop(1,'#ff3b3b');
+  x.lineWidth=9; x.strokeStyle=grad; x.beginPath(); x.arc(cx,cy,R,a0,af); x.stroke();             // fill arc
+  x.fillStyle='#fff'; x.shadowColor='#ffd23b'; x.shadowBlur=10;                                   // glow tip
+  x.beginPath(); x.arc(cx+Math.cos(af)*R, cy+Math.sin(af)*R, 4, 0, 7); x.fill(); x.shadowBlur=0;
+  x.lineCap='butt';
+}
 function updateHUD(){
   elLapNow.textContent=Math.min(player.lap+1,CONFIG.laps);
   elCurTime.textContent=fmt(raceTime);
   elBestTime.textContent='BEST '+(bestLap?fmt(bestLap):'--');
   const r=rankOf(player); elPosNow.innerHTML=r+'<span style="font-size:14px">'+ordinal(r).replace(String(r),'')+'</span>';
   elPosOf.textContent='of '+cars.length;
-  elSpeed.innerHTML=Math.round(Math.abs(player.vel.dot(new THREE.Vector2(Math.sin(player.heading),Math.cos(player.heading))))*3.1)+'<small> km/h</small>';
+  const kmh=Math.round(Math.abs(player.vel.dot(_r.set(Math.sin(player.heading),Math.cos(player.heading))))*3.1);
+  elSpeedNum.textContent=kmh; drawSpeedo(kmh, 250);
   elBoostBar.style.width=(player.boost)+'%';
   elBoostWrap.classList.toggle('charging', player.drifting && !player.boosting);
   drawMap();
@@ -1085,6 +1110,29 @@ function resolveCollisions(){
   }
 }
 
+// one final pass: radial speed blur (sharp centre, streaking edges) + grade + vignette + sRGB
+const CINEMATIC_SHADER = {
+  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uContrast:{value:1.13}, uSat:{value:1.2}, uTone:{value:0.9}, uVignette:{value:0.55} },
+  vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader:[
+    'precision highp float; varying vec2 vUv; uniform sampler2D tDiffuse;',
+    'uniform float uBlur,uContrast,uSat,uTone,uVignette;',
+    'void main(){',
+    '  vec2 dir=vUv-0.5; float edge=smoothstep(0.12,0.55,length(dir)); vec4 col=vec4(0.0); float tot=0.0;',
+    '  for(int i=0;i<6;i++){ float t=float(i)/5.0; float w=1.0-0.5*t;',
+    '    col+=texture2D(tDiffuse, vUv-dir*uBlur*t*0.19*edge)*w; tot+=w; }',
+    '  col/=tot;',
+    '  col.rgb=(col.rgb-0.5)*uContrast+0.5;',                               // contrast
+    '  float l=dot(col.rgb, vec3(0.299,0.587,0.114));',
+    '  col.rgb=mix(vec3(l), col.rgb, uSat);',                              // saturation
+    '  col.rgb += mix(vec3(-0.015,0.0,0.03), vec3(0.045,0.018,-0.02), smoothstep(0.2,0.8,l))*uTone;', // teal/orange
+    '  float v=smoothstep(0.95,0.30,length(vUv-0.5));',
+    '  col.rgb*=mix(1.0,v,uVignette);',                                    // vignette
+    '  col.rgb=pow(max(col.rgb,0.0), vec3(0.4545));',                      // linear -> sRGB
+    '  gl_FragColor=vec4(col.rgb,1.0);',
+    '}'
+  ].join('\n')
+};
 function buildComposer(){
   if(typeof THREE.EffectComposer==='undefined' || typeof THREE.UnrealBloomPass==='undefined') return;
   try{
@@ -1093,7 +1141,9 @@ function buildComposer(){
     const res=new THREE.Vector2(Math.round(innerWidth*(isTouch?0.5:0.75)), Math.round(innerHeight*(isTouch?0.5:0.75)));
     bloomPass=new THREE.UnrealBloomPass(res, isTouch?0.55:0.7, 0.4, 0.82);  // strength, radius, threshold
     composer.addPass(bloomPass);
-    composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));    // linear -> sRGB at the very end
+    cinePass=new THREE.ShaderPass(CINEMATIC_SHADER);
+    cinePass.uniforms.uVignette.value=isTouch?0.45:0.58;
+    composer.addPass(cinePass);                                            // speed blur + grade + vignette + sRGB
     composer.setSize(innerWidth, innerHeight);
   }catch(e){ composer=null; }
 }
@@ -1191,7 +1241,7 @@ function init(){
   loadCarModels();   // upgrades the box placeholders to the realistic GLB when it loads
 
   audio=new AudioEngine();
-  initMap(); placeGrid();
+  initMap(); initSpeedo(); placeGrid();
   // park camera on the grid
   _f.set(Math.sin(player.heading),Math.cos(player.heading));
   camera.position.set(player.pos.x-_f.x*CONFIG.camDist, CONFIG.camHeight, player.pos.y-_f.y*CONFIG.camDist);
