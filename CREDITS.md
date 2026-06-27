@@ -7,6 +7,10 @@ All third-party assets used here are licensed for commercial use.
 - **Sky / reflection HDRI** — "Venice Sunset" from **Poly Haven**, CC0 (public domain).
 - **Road textures** — lane markings from the Godot "Road Generator" addon (TheDuckCow, MIT);
   asphalt surface-normal from **ambientCG** "Ground037", CC0.
+- **Trees & rocks** — low-poly models from **poly.pizza**, all **CC0 (public domain)**:
+  - Pine Tree, Tree (broadleaf), Palm Tree by **Quaternius** — CC0.
+  - Rock ("Rock Flat Grass") by **Kenney** — CC0.
+  Each was web-optimized (WebP textures, geometry intact) via gltf-transform and instanced onto the terrain.
 - **Engine** — **Three.js** (MIT).
 
 Everything else — the city (buildings, storefronts, signage, billboards, water towers,

@@ -725,13 +725,20 @@ function buildGuardrails(rng, color){
 }
 // COAST: palms + guardrails + pastel hotels
 function buildCoast(rng){
-  const trunkMat=new THREE.MeshStandardMaterial({color:0x6a4a2c, roughness:1});
-  const leafMat=new THREE.MeshStandardMaterial({color:0x3f8a44, flatShading:true, roughness:1});
-  for(let i=0;i<SAMPLES;i+=9){ const p=samplePts[i], n=sampleNorm[i], side=((i/9)%2)?1:-1, off=CONFIG.roadHalfWidth+2.6+rng()*2.5;
-    const g=new THREE.Group(), hh=7+rng()*4;
-    const tr=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.42,hh,6), trunkMat); tr.position.y=hh/2; g.add(tr);
-    for(let a=0;a<5;a++){ const lf=new THREE.Mesh(new THREE.ConeGeometry(0.5,3.2,4), leafMat); lf.position.y=hh+0.3; lf.rotation.y=a*1.256; lf.rotation.x=1.05; g.add(lf); }
-    g.position.set(p.x+n.x*off*side,0,p.y+n.y*off*side); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); }
+  if(propsReady && propModels.palm){                         // real CC0 palms lining the road
+    const palmXf=[];
+    for(let i=0;i<SAMPLES;i+=9){ const p=samplePts[i], n=sampleNorm[i], side=((i/9)%2)?1:-1, off=CONFIG.roadHalfWidth+2.6+rng()*2.5;
+      palmXf.push(propMat(p.x+n.x*off*side, p.y+n.y*off*side, 8.5+rng()*3.5, rng()*6.283)); }
+    instProp(propModels.palm, palmXf);
+  } else {                                                    // procedural fallback
+    const trunkMat=new THREE.MeshStandardMaterial({color:0x6a4a2c, roughness:1});
+    const leafMat=new THREE.MeshStandardMaterial({color:0x3f8a44, flatShading:true, roughness:1});
+    for(let i=0;i<SAMPLES;i+=9){ const p=samplePts[i], n=sampleNorm[i], side=((i/9)%2)?1:-1, off=CONFIG.roadHalfWidth+2.6+rng()*2.5;
+      const g=new THREE.Group(), hh=7+rng()*4;
+      const tr=new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.42,hh,6), trunkMat); tr.position.y=hh/2; g.add(tr);
+      for(let a=0;a<5;a++){ const lf=new THREE.Mesh(new THREE.ConeGeometry(0.5,3.2,4), leafMat); lf.position.y=hh+0.3; lf.rotation.y=a*1.256; lf.rotation.x=1.05; g.add(lf); }
+      g.position.set(p.x+n.x*off*side,0,p.y+n.y*off*side); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); }
+  }
   buildGuardrails(rng, 0xdedede);
   buildBlockBuildings(rng, ['#e7a8b4','#a8d4e7','#f2e4ac','#d4b4e7','#e7c4a0'], 0.5, 30);
 }
@@ -790,16 +797,28 @@ function buildForest(rng){
       trees.push({x,z,sc:(0.7+rng()*0.7)*(0.55+0.45*edge)}); // smaller higher up
     }
   }
-  const trunkGeo=new THREE.CylinderGeometry(0.35,0.5,2.5,6); trunkGeo.translate(0,1.25,0);
-  const trunk=new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({color:0x5a3f28,roughness:1}), trees.length);
-  const pineGeo=new THREE.ConeGeometry(2.4,6,7); pineGeo.translate(0,5.5,0);
-  const pine=new THREE.InstancedMesh(pineGeo, new THREE.MeshStandardMaterial({color:0x2a5a2e,flatShading:true,roughness:1}), trees.length);
-  trees.forEach((t,k)=>{ _m.compose(pv.set(t.x,terrainHeight(t.x,t.z),t.z), q, sv.set(t.sc,t.sc,t.sc)); trunk.setMatrixAt(k,_m); pine.setMatrixAt(k,_m); });
-  trunk.instanceMatrix.needsUpdate=pine.instanceMatrix.needsUpdate=true; trunk.castShadow=pine.castShadow=!isTouch; scene.add(trunk); scene.add(pine);
+  if(propsReady && propModels.pine){                         // real CC0 pines (+ broadleaf variety)
+    const pineXf=[], treeXf=[];
+    trees.forEach(t=>{ const rotY=rng()*6.283;
+      if(propModels.tree && rng()<0.3) treeXf.push(propMat(t.x,t.z, 8.5*t.sc, rotY));
+      else pineXf.push(propMat(t.x,t.z, 7.5*t.sc, rotY)); });
+    instProp(propModels.pine, pineXf); if(propModels.tree) instProp(propModels.tree, treeXf);
+  } else {                                                    // procedural fallback
+    const trunkGeo=new THREE.CylinderGeometry(0.35,0.5,2.5,6); trunkGeo.translate(0,1.25,0);
+    const trunk=new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({color:0x5a3f28,roughness:1}), trees.length);
+    const pineGeo=new THREE.ConeGeometry(2.4,6,7); pineGeo.translate(0,5.5,0);
+    const pine=new THREE.InstancedMesh(pineGeo, new THREE.MeshStandardMaterial({color:0x2a5a2e,flatShading:true,roughness:1}), trees.length);
+    trees.forEach((t,k)=>{ _m.compose(pv.set(t.x,terrainHeight(t.x,t.z),t.z), q, sv.set(t.sc,t.sc,t.sc)); trunk.setMatrixAt(k,_m); pine.setMatrixAt(k,_m); });
+    trunk.instanceMatrix.needsUpdate=pine.instanceMatrix.needsUpdate=true; trunk.castShadow=pine.castShadow=!isTouch; scene.add(trunk); scene.add(pine);
+  }
   const rrocks=[]; for(let k=0;k<16;k++){ const a=rng()*6.283, rad=trackRadius+18+rng()*200, x=trackCentroid.x+Math.cos(a)*rad, z=trackCentroid.y+Math.sin(a)*rad; if(distToTrackApprox(x,z)<18) continue; rrocks.push({x,z,r:2.5+rng()*4}); }
-  const bmesh=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0), new THREE.MeshStandardMaterial({color:0x6a6a64,flatShading:true,roughness:1}), rrocks.length);
-  rrocks.forEach((b,k)=>{ _m.compose(pv.set(b.x,terrainHeight(b.x,b.z)+b.r*0.4,b.z), q, sv.set(b.r,b.r*0.8,b.r)); bmesh.setMatrixAt(k,_m); });
-  bmesh.instanceMatrix.needsUpdate=true; bmesh.castShadow=!isTouch; scene.add(bmesh);
+  if(propsReady && propModels.rock){                         // Kenney flat mossy rocks on the forest floor
+    instProp(propModels.rock, rrocks.map(b=> propMat(b.x,b.z, b.r*1.6, rng()*6.283, 0)));
+  } else {
+    const bmesh=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0), new THREE.MeshStandardMaterial({color:0x6a6a64,flatShading:true,roughness:1}), rrocks.length);
+    rrocks.forEach((b,k)=>{ _m.compose(pv.set(b.x,terrainHeight(b.x,b.z)+b.r*0.4,b.z), q, sv.set(b.r,b.r*0.8,b.r)); bmesh.setMatrixAt(k,_m); });
+    bmesh.instanceMatrix.needsUpdate=true; bmesh.castShadow=!isTouch; scene.add(bmesh);
+  }
   buildGuardrails(rng, 0x7a6a4a);
 }
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
@@ -984,6 +1003,51 @@ function upgradeCars(){
     rig.chassis=chassis; rig.wheels=wheels; rig.front=front; rig.spinAcc=0;
     if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
   });
+}
+
+/* ---- real CC0 props (Quaternius / Kenney low-poly GLBs) instanced onto the terrain ---- */
+const SHARED=new Set();                 // geometries/materials/textures shared across world rebuilds — never dispose
+let propModels={}, propsReady=false;
+const PROP_SPECS={
+  pine:{file:'models/cc0/pine.glb', fit:'height'},   // Quaternius pine (CC0)
+  tree:{file:'models/cc0/tree.glb', fit:'height'},   // Quaternius broadleaf (CC0)
+  palm:{file:'models/cc0/palm.glb', fit:'height'},   // Quaternius palm (CC0)
+  rock:{file:'models/cc0/rock.glb', fit:'xz'},       // Kenney flat rock (CC0)
+};
+function prepProp(root, fit){           // bake -> normalize (base y=0, centred XZ, ref dim = 1); returns [{geometry,material}]
+  root.updateMatrixWorld(true);
+  const parts=[];
+  root.traverse(o=>{ if(o.isMesh && o.geometry){ const g=o.geometry.clone(); g.applyMatrix4(o.matrixWorld);
+    let mat=Array.isArray(o.material)?o.material[0]:o.material; mat=mat.clone(); mat.envMapIntensity=0.9;
+    parts.push({geometry:g, material:mat}); } });
+  if(!parts.length) return parts;
+  const box=new THREE.Box3(); parts.forEach(p=>{ p.geometry.computeBoundingBox(); box.union(p.geometry.boundingBox); });
+  const sz=new THREE.Vector3(), ctr=new THREE.Vector3(); box.getSize(sz); box.getCenter(ctr);
+  const ref = fit==='xz' ? Math.max(sz.x,sz.z) : fit==='height' ? sz.y : Math.max(sz.x,sz.y,sz.z);
+  const s=1/Math.max(ref,1e-4);
+  const M=new THREE.Matrix4().makeScale(s,s,s).multiply(new THREE.Matrix4().makeTranslation(-ctr.x,-box.min.y,-ctr.z));
+  parts.forEach(p=>{ p.geometry.applyMatrix4(M); SHARED.add(p.geometry); SHARED.add(p.material); if(p.material.map) SHARED.add(p.material.map); });
+  return parts;
+}
+function loadPropModels(){
+  if(typeof THREE.GLTFLoader==='undefined') return; const L=new THREE.GLTFLoader();
+  let left=Object.keys(PROP_SPECS).length;
+  const done=()=>{ if(--left<=0){ propsReady=true; if(state==='menu') selectTrack(currentTrack); } };
+  Object.entries(PROP_SPECS).forEach(([k,spec])=>{
+    try{ L.load(spec.file, g=>{ try{ const p=prepProp(g.scene, spec.fit); if(p.length) propModels[k]=p; }catch(e){} done(); }, undefined, done); }
+    catch(e){ done(); }
+  });
+}
+const _pm=new THREE.Matrix4(), _pmT=new THREE.Matrix4(), _pq=new THREE.Quaternion(), _pp=new THREE.Vector3(), _ps=new THREE.Vector3(), _PY=new THREE.Vector3(0,1,0);
+function propMat(x,z,scale,rotY,yOff){  // transform that drops a normalized prop onto the terrain
+  _pq.setFromAxisAngle(_PY, rotY||0); _pp.set(x, terrainHeight(x,z)+(yOff||0), z); _ps.set(scale,scale,scale);
+  return _pm.compose(_pp,_pq,_ps).clone();
+}
+function instProp(parts, mats){         // one InstancedMesh per model part, sharing the transform list
+  if(!parts||!parts.length||!mats.length) return;
+  parts.forEach(p=>{ const im=new THREE.InstancedMesh(p.geometry, p.material, mats.length);
+    mats.forEach((m,i)=>im.setMatrixAt(i,m)); im.instanceMatrix.needsUpdate=true;
+    im.castShadow=!isTouch; im.receiveShadow=false; im.frustumCulled=false; scene.add(im); });
 }
 
 function placeGrid(){
@@ -1404,9 +1468,9 @@ function initJoystick(){
    INIT
    ========================================================================= */
 function disposeGroup(g){ g.traverse(o=>{
-  if(o.geometry) o.geometry.dispose();
+  if(o.geometry && !SHARED.has(o.geometry)) o.geometry.dispose();
   if(o.material){ const ms=Array.isArray(o.material)?o.material:[o.material];
-    ms.forEach(m=>{ for(const k in m){ const v=m[k]; if(v && v.isTexture) v.dispose(); } if(m.dispose) m.dispose(); }); }
+    ms.forEach(m=>{ if(SHARED.has(m)) return; for(const k in m){ const v=m[k]; if(v && v.isTexture && !SHARED.has(v)) v.dispose(); } if(m.dispose) m.dispose(); }); }
 }); }
 function buildWorld(idx){
   currentTrack=idx; currentTheme=TRACKS[idx];
@@ -1501,6 +1565,7 @@ function init(){
   cars=[]; player=makeCar(CONFIG.colors.player, true); cars.push(player);
   for(let i=0;i<CONFIG.aiCount;i++) cars.push(makeCar(CONFIG.colors.ai[i%CONFIG.colors.ai.length], false));
   loadCarModels();   // upgrades the box placeholders to the realistic GLB when it loads
+  loadPropModels();  // swaps procedural trees/rocks/palms for real CC0 GLBs when they load
 
   audio=new AudioEngine();
   initMap(); initSpeedo(); placeGrid();
