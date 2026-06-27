@@ -12,6 +12,11 @@ All third-party assets used here are licensed for commercial use.
   - Rock ("Rock Flat Grass") and "Rock Formation" (desert) by **Kenney** — CC0.
   Quaternius and Kenney release their entire catalogs as CC0; each model was license-verified,
   web-optimized (WebP textures, geometry intact) via gltf-transform, and instanced onto the terrain.
+- **Car audio** — all **CC0 (public domain)**:
+  - Engine RPM loops — "Racing Car Engine Sound Loops" by **domasx2** (OpenGameArt), CC0.
+  - Tire skid — "Tires Squeaking" by **RutgerMuller** (Freesound), CC0.
+  - Nitro/boost — "Nitro Activation" by **strexet** (Freesound), CC0.
+  The engine layers are crossfaded by RPM and pitch-shifted at runtime.
 - **Engine** — **Three.js** (MIT).
 
 Everything else — the city (buildings, storefronts, signage, billboards, water towers,

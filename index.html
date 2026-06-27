@@ -348,61 +348,52 @@ class AudioEngine {
     try{
       const AC = window.AudioContext || window.webkitAudioContext; this.ctx = new AC(); const t=this.ctx.currentTime;
       this.master = this.ctx.createGain(); this.master.gain.value=0; this.master.connect(this.ctx.destination);
-      // soft limiter so the layered engine never clips harshly
       this.comp=this.ctx.createDynamicsCompressor();
-      this.comp.threshold.value=-9; this.comp.knee.value=14; this.comp.ratio.value=6; this.comp.attack.value=0.003; this.comp.release.value=0.18;
+      this.comp.threshold.value=-8; this.comp.knee.value=14; this.comp.ratio.value=6; this.comp.attack.value=0.003; this.comp.release.value=0.2;
       this.comp.connect(this.master);
-      // shared 2s white-noise buffer (screech / boost / thud)
-      const len=2*this.ctx.sampleRate, buf=this.ctx.createBuffer(1,len,this.ctx.sampleRate);
-      const d=buf.getChannelData(0); for(let i=0;i<len;i++) d[i]=Math.random()*2-1; this.noiseBuf=buf;
-
-      // ENGINE: a stack of harmonic oscillators -> load gain -> tone lowpass
-      this.engBus=this.ctx.createGain(); this.engBus.gain.value=0.0;
-      this.engLP=this.ctx.createBiquadFilter(); this.engLP.type='lowpass'; this.engLP.frequency.value=480; this.engLP.Q.value=0.7;
-      this.engBus.connect(this.engLP); this.engLP.connect(this.comp);
-      const mk=(type,mul,gain)=>{ const o=this.ctx.createOscillator(); o.type=type; const g=this.ctx.createGain(); g.gain.value=gain;
-        o.connect(g); g.connect(this.engBus); o.start(); return {o,mul}; };
-      this.parts=[ mk('sawtooth',0.5,0.55), mk('sawtooth',1,0.5), mk('square',2,0.16), mk('sawtooth',3,0.09) ];
-      // "throb" LFO -> adds a lumpy idle rumble onto the engine load gain
-      this.lfo=this.ctx.createOscillator(); this.lfo.type='sine'; this.lfo.frequency.value=18;
-      this.lfoG=this.ctx.createGain(); this.lfoG.gain.value=0.0; this.lfo.connect(this.lfoG); this.lfoG.connect(this.engBus.gain); this.lfo.start();
-
-      // SCREECH: continuous noise, gated open while drifting
-      this.sk=this.ctx.createBufferSource(); this.sk.buffer=buf; this.sk.loop=true;
-      this.skBP=this.ctx.createBiquadFilter(); this.skBP.type='bandpass'; this.skBP.frequency.value=1600; this.skBP.Q.value=6;
-      this.skG=this.ctx.createGain(); this.skG.gain.value=0;
-      this.sk.connect(this.skBP); this.skBP.connect(this.skG); this.skG.connect(this.comp); this.sk.start();
-
-      this.master.gain.linearRampToValueAtTime(0.6, t+0.5);
-      this.ok=true; this._rpm=0.2;
+      // small noise buffer kept for the collision thud
+      const len=this.ctx.sampleRate, nb=this.ctx.createBuffer(1,len,this.ctx.sampleRate); const d=nb.getChannelData(0);
+      for(let i=0;i<len;i++) d[i]=Math.random()*2-1; this.noiseBuf=nb;
+      // ENGINE: REAL recorded loops (CC0) crossfaded by RPM + pitch-shifted -> sounds like an actual car
+      this.engGain=this.ctx.createGain(); this.engGain.gain.value=0; this.engGain.connect(this.comp);
+      this.layers=[]; this.buffers={}; this._rpm=0.12; this.skidOn=false;
+      const LAYERS=[['audio/eng0.wav',0.10],['audio/eng2.wav',0.42],['audio/eng4.wav',0.72],['audio/eng5.wav',1.0]];
+      LAYERS.forEach((L,i)=>{ this._fetchBuf(L[0]).then(buf=>{ if(!buf||!this.ctx) return;
+        const src=this.ctx.createBufferSource(); src.buffer=buf; src.loop=true;
+        const g=this.ctx.createGain(); g.gain.value=0; src.connect(g); g.connect(this.engGain); try{src.start();}catch(e){}
+        this.layers[i]={src,g,center:L[1]}; }); });
+      this._fetchBuf('audio/skid.mp3').then(b=>this.buffers.skid=b);
+      this._fetchBuf('audio/boost.mp3').then(b=>this.buffers.boost=b);
+      this.master.gain.linearRampToValueAtTime(0.92, t+0.4);
+      this.ok=true;
     }catch(e){ this.ok=false; }
   }
+  _fetchBuf(url){ return fetch(url).then(r=>r.arrayBuffer()).then(ab=>new Promise((res,rej)=>this.ctx.decodeAudioData(ab,res,rej))).catch(()=>null); }
   update(speed01, throttle, drift){ if(!this.ok) return; const t=this.ctx.currentTime;
-    // faux 5-speed gearbox -> rpm that climbs then "shifts" down
+    // faux 5-speed gearbox: rpm climbs within a gear then "shifts" back down on the next
     const gv=[0,0.16,0.34,0.55,0.80,1.30]; let g=0; while(g<gv.length-2 && speed01>gv[g+1]) g++;
-    const span=Math.max(gv[g+1]-gv[g],1e-3); let rpm=0.30+0.70*clamp((speed01-gv[g])/span,0,1);
-    if(speed01<0.02) rpm=0.17+0.04*Math.sin(t*5);              // idle wobble
-    this._rpm += (rpm-this._rpm)*0.22;                          // smoothing
-    const base=42+this._rpm*150;                               // engine fundamental (Hz)
-    for(const p of this.parts) p.o.frequency.setTargetAtTime(base*p.mul, t, 0.04);
-    this.engLP.frequency.setTargetAtTime(300 + this._rpm*2700 + (throttle?700:0), t, 0.05);  // brightness
-    const load=0.10 + (throttle?0.22:0.04) + this._rpm*0.10;
-    this.engBus.gain.setTargetAtTime(load, t, 0.08);
-    this.lfo.frequency.setTargetAtTime(8 + this._rpm*40, t, 0.1);                 // lumpy at idle, smooth at speed
-    this.lfoG.gain.setTargetAtTime(0.07*(1-this._rpm)*load, t, 0.1);
-    this.skBP.frequency.setTargetAtTime(1300 + this._rpm*900, t, 0.05);
-    this.skG.gain.setTargetAtTime(drift?0.17:0.0, t, 0.05);
+    let rpm=0.25+0.75*clamp((speed01-gv[g])/Math.max(gv[g+1]-gv[g],1e-3),0,1);
+    if(speed01<0.02) rpm=0.05;                                  // idle
+    this._rpm += (rpm-this._rpm)*0.18;
+    const pitch=0.78 + this._rpm*1.05;                          // playbackRate sweep within a layer
+    for(const L of this.layers){ if(!L) continue;
+      const w=clamp(1 - Math.abs(this._rpm-L.center)/0.36, 0, 1);  // triangular crossfade window
+      L.g.gain.setTargetAtTime(w, t, 0.09);
+      try{ L.src.playbackRate.setTargetAtTime(pitch, t, 0.09); }catch(e){}
+    }
+    this.engGain.gain.setTargetAtTime(0.5 + (throttle?0.35:0.08) + this._rpm*0.15, t, 0.1);
+    if(drift) this._startSkid(); else this._stopSkid();
   }
-  boost(){ if(!this.ok) return; try{ const t=this.ctx.currentTime, o=this.comp;
-    const s=this.ctx.createBufferSource(); s.buffer=this.noiseBuf;
-    const f=this.ctx.createBiquadFilter(); f.type='bandpass'; f.Q.value=1.1;
-    f.frequency.setValueAtTime(380,t); f.frequency.exponentialRampToValueAtTime(5200,t+0.4);
-    const g=this.ctx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.4,t+0.04); g.gain.exponentialRampToValueAtTime(0.001,t+0.7);
-    s.connect(f); f.connect(g); g.connect(o); s.start(); s.stop(t+0.75);
-    const to=this.ctx.createOscillator(); to.type='sawtooth'; to.frequency.setValueAtTime(900,t); to.frequency.exponentialRampToValueAtTime(230,t+0.5);
-    const tg=this.ctx.createGain(); tg.gain.setValueAtTime(0,t); tg.gain.linearRampToValueAtTime(0.12,t+0.05); tg.gain.exponentialRampToValueAtTime(0.001,t+0.55);
-    to.connect(tg); tg.connect(o); to.start(); to.stop(t+0.6);
-  }catch(e){} }
+  _startSkid(){ if(this.skidOn||!this.buffers.skid) return; this.skidOn=true; const t=this.ctx.currentTime;
+    const s=this.ctx.createBufferSource(); s.buffer=this.buffers.skid; s.loop=true;
+    const g=this.ctx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.45,t+0.05);
+    s.connect(g); g.connect(this.comp); try{s.start();}catch(e){} this.skidNode={s,g}; }
+  _stopSkid(){ if(!this.skidOn) return; this.skidOn=false; const t=this.ctx.currentTime;
+    if(this.skidNode){ const sn=this.skidNode; sn.g.gain.setTargetAtTime(0,t,0.1); try{sn.s.stop(t+0.4);}catch(e){} this.skidNode=null; } }
+  boost(){ if(!this.ok) return; const t=this.ctx.currentTime;
+    if(this.buffers.boost){ const s=this.ctx.createBufferSource(); s.buffer=this.buffers.boost;
+      const g=this.ctx.createGain(); g.gain.value=0.8; s.connect(g); g.connect(this.comp); try{s.start();}catch(e){} }
+  }
   thud(v){ if(!this.ok) return; v=clamp(v||0.5,0.2,1); try{ const t=this.ctx.currentTime, o=this.comp;
     const so=this.ctx.createOscillator(); so.type='sine'; so.frequency.setValueAtTime(150,t); so.frequency.exponentialRampToValueAtTime(46,t+0.18);
     const sg=this.ctx.createGain(); sg.gain.setValueAtTime(0.55*v,t); sg.gain.exponentialRampToValueAtTime(0.001,t+0.26);
