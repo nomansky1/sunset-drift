@@ -517,7 +517,12 @@ function buildTrackMeshes(){
   const roadMat=new THREE.MeshStandardMaterial({ map:roadMap,
     normalMap:grain('textures/road_normal.jpg'), normalScale:new THREE.Vector2(0.8,0.8),
     roughnessMap:grain('textures/road_rough.jpg'), roughness:0.42, metalness:0.1,
-    emissiveMap:roadMap, emissive:0xffffff, emissiveIntensity:0.42 }); // self-light the lane markings at dusk (+ bloom-ready)
+    emissiveMap:roadMap, emissive:0xffffff, emissiveIntensity:0.42,
+    polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4 }); // render ON TOP of the terrain corridor (no z-fight bleed-through)
+  const rth=currentTheme?currentTheme.theme:'city';        // per-theme road tint (same texture everywhere = consistent)
+  if(rth==='desert'){ roadMat.color=new THREE.Color(0x554c3e); roadMat.emissiveIntensity=0.16; roadMat.roughness=0.78; }   // dark dusty desert highway (contrasts the sand)
+  else if(rth==='coast'){ roadMat.color=new THREE.Color(0x6f6a64); roadMat.emissiveIntensity=0.28; }
+  else if(rth==='forest'){ roadMat.color=new THREE.Color(0x6a6d74); roadMat.emissiveIntensity=0.3; }
   if(rainOn){                                            // wet asphalt: darker + glossy reflective sheen
     roadMat.color=new THREE.Color(0x6e6e76); roadMat.roughness=0.16; roadMat.metalness=0.5; roadMat.emissiveIntensity=0.26;
   }
@@ -530,6 +535,7 @@ function buildTrackMeshes(){
     buildCurbFace(CONFIG.roadHalfWidth, 0.06, 0.28, curbMat);
     buildSideStrips(CONFIG.roadHalfWidth, CONFIG.roadHalfWidth+4.5, 0.28, walkMat);
   }
+  buildBarriers();                                       // continuous visible barrier on EVERY track
 
   // start / finish gate + checkpoint gates (overhead banners)
   buildGate(0, true);
@@ -632,7 +638,8 @@ function terrainHeight(x,z){
   let h=(terrainNoise(x*0.006+50, z*0.006+50)-0.42)*2.4*terrainAmp;
   if(h<0) h*=0.4;                                        // shallower valleys
   const d=distToTrackApprox(x,z);
-  return h*clamp((d-(CONFIG.roadHalfWidth+8))/42, 0, 1); // flatten the drivable corridor
+  const blend=clamp((d-(CONFIG.roadHalfWidth+8))/42, 0, 1);
+  return h*blend - 0.35*(1-blend);                       // recess the drivable corridor BELOW the road (no z-fight bleed-through)
 }
 function biomeColor(h, col){
   const f=clamp(h/(terrainAmp*1.3||1), -0.3, 1);          // altitude bands -> colour
@@ -773,6 +780,42 @@ function buildGuardrails(rng, color){
   const pi=new THREE.InstancedMesh(postGeo,mat,posts.length); posts.forEach((m,k)=>pi.setMatrixAt(k,m)); pi.instanceMatrix.needsUpdate=true; pi.castShadow=!isTouch; scene.add(pi);
   const ri=new THREE.InstancedMesh(railGeo,mat,rails.length); rails.forEach((m,k)=>ri.setMatrixAt(k,m)); ri.instanceMatrix.needsUpdate=true; ri.castShadow=!isTouch; scene.add(ri);
 }
+// CONTINUOUS solid red/white hazard barrier hugging the road edge, terrain-following, on EVERY track
+function makeHazardTex(){
+  const c=document.createElement('canvas'); c.width=64; c.height=16; const x=c.getContext('2d');
+  for(let k=0;k<8;k++){ x.fillStyle=(k%2)?'#d63a2a':'#ededed'; x.fillRect(k*8,0,8,16); }
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.magFilter=THREE.NearestFilter;
+  if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
+}
+function buildBarriers(){
+  const at=CONFIG.roadHalfWidth+0.3, w=0.5, H=1.2, th=currentTheme?currentTheme.theme:'city';
+  const tex=makeHazardTex();
+  const faceMat=new THREE.MeshStandardMaterial({map:tex, roughness:0.7, metalness:0.05, side:THREE.DoubleSide,
+    emissive:0xffffff, emissiveMap:tex, emissiveIntensity:nightMode?0.5:0.0});  // glow a touch at night
+  const topMat=new THREE.MeshStandardMaterial({color: th==='docks'?0xe0c020:0xcdd2da, roughness:0.6, metalness:0.25, side:THREE.DoubleSide});
+  [1,-1].forEach(side=>{
+    const fp=[], fuv=[], fi=[], tp=[], ti=[]; let cum=0;
+    for(let i=0;i<=SAMPLES;i++){ const j=i%SAMPLES, p=samplePts[j], n=sampleNorm[j];
+      if(i>0) cum+=samplePts[j].distanceTo(samplePts[(i-1+SAMPLES)%SAMPLES]);
+      const ix=p.x+n.x*at*side, iz=p.y+n.y*at*side, by=terrainHeight(ix,iz);
+      const ox=p.x+n.x*(at+w)*side, oz=p.y+n.y*(at+w)*side, oy=terrainHeight(ox,oz);
+      const u=cum*0.13;
+      // inner face (faces road): 2 verts; outer face: 2 verts  -> two strips share the uv
+      fp.push(ix,by,iz, ix,by+H,iz,  ox,oy,oz, ox,oy+H,oz);
+      fuv.push(u,0, u,1,  u,0, u,1);
+      // top face (inner-top -> outer-top)
+      tp.push(ix,by+H,iz, ox,oy+H,oz);
+    }
+    for(let i=0;i<SAMPLES;i++){ const a=i*4; // inner strip (a,a+1) ; outer strip (a+2,a+3)
+      fi.push(a,a+1,a+4, a+1,a+5,a+4,  a+2,a+6,a+3, a+3,a+6,a+7);
+      const b=i*2; ti.push(b,b+1,b+2, b+1,b+3,b+2);
+    }
+    const fg=new THREE.BufferGeometry(); fg.setAttribute('position',new THREE.Float32BufferAttribute(fp,3)); fg.setAttribute('uv',new THREE.Float32BufferAttribute(fuv,2)); fg.setIndex(fi); fg.computeVertexNormals();
+    const fm=new THREE.Mesh(fg,faceMat); fm.castShadow=!isTouch; fm.receiveShadow=true; scene.add(fm);
+    const tg=new THREE.BufferGeometry(); tg.setAttribute('position',new THREE.Float32BufferAttribute(tp,3)); tg.setIndex(ti); tg.computeVertexNormals();
+    scene.add(new THREE.Mesh(tg,topMat));
+  });
+}
 // COAST: palms + guardrails + pastel hotels
 function buildCoast(rng){
   if(propsReady && propModels.palm){                         // real CC0 palms lining the road
@@ -789,7 +832,6 @@ function buildCoast(rng){
       for(let a=0;a<5;a++){ const lf=new THREE.Mesh(new THREE.ConeGeometry(0.5,3.2,4), leafMat); lf.position.y=hh+0.3; lf.rotation.y=a*1.256; lf.rotation.x=1.05; g.add(lf); }
       g.position.set(p.x+n.x*off*side,0,p.y+n.y*off*side); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); }
   }
-  buildGuardrails(rng, 0xdedede);
   buildBlockBuildings(rng, ['#e7a8b4','#a8d4e7','#f2e4ac','#d4b4e7','#e7c4a0'], 0.5, 30);
 }
 // DOCKS: stacked shipping containers + warehouses + guardrails
@@ -814,7 +856,6 @@ function buildDocks(rng){
       lists[ci].forEach((m,k)=>inst.setMatrixAt(k,m)); inst.instanceMatrix.needsUpdate=true; inst.castShadow=inst.receiveShadow=!isTouch; scene.add(inst); });
   }
   buildBlockBuildings(rng, ['#585c63','#6a6055','#494d54','#5a5550'], 0.42, 26);
-  buildGuardrails(rng, 0xc8b020);
 }
 // DESERT: instanced red-rock mesas + cacti
 function buildDesert(rng){
@@ -841,7 +882,6 @@ function buildDesert(rng){
     cacti.forEach(c=>{ const g=new THREE.Group(), hh=c.h; const b=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.7,hh,6), cactMat); b.position.y=hh/2; g.add(b);
       for(let s=-1;s<=1;s+=2){ const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.4,1.5,6), cactMat); arm.position.set(s*0.7,hh*0.55,0); arm.rotation.z=s*0.5; g.add(arm); }
       g.position.set(c.x,terrainHeight(c.x,c.z),c.z); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); }); }
-  buildGuardrails(rng, 0xc89858);
 }
 // FOREST: instanced pine trees + boulders
 function buildForest(rng){
@@ -884,7 +924,6 @@ function buildForest(rng){
     rrocks.forEach((b,k)=>{ _m.compose(pv.set(b.x,terrainHeight(b.x,b.z)+b.r*0.4,b.z), q, sv.set(b.r,b.r*0.8,b.r)); bmesh.setMatrixAt(k,_m); });
     bmesh.instanceMatrix.needsUpdate=true; bmesh.castShadow=!isTouch; scene.add(bmesh);
   }
-  buildGuardrails(rng, 0x7a6a4a);
 }
 function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
   t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
@@ -1010,7 +1049,19 @@ function buildCar(color){
     for(let s=0;s<3;s++){ const spoke=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.62,0.09), rimMat); spoke.rotation.x=s*Math.PI/3; w.add(spoke); }
     g.add(w); wheels.push(w); if(kind==='f') front.push(w); });
 
-  return { group:g, chassis, wheels, front, spinAcc:0 };
+  // twin exhaust flame flares (hidden until boosting) — sharp afterburner cones, not a cloud
+  const flames=[makeExhaustFlame(), makeExhaustFlame()];
+  flames[0].position.set(-0.42,0.55,-2.05); flames[1].position.set(0.42,0.55,-2.05);
+  flames.forEach(f=>g.add(f));
+  return { group:g, chassis, wheels, front, spinAcc:0, flames };
+}
+function makeExhaustFlame(){
+  const grp=new THREE.Group();
+  const mk=(r,h,color,op)=>{ const geo=new THREE.ConeGeometry(r,h,12,1,true); geo.translate(0,h/2,0); geo.rotateX(-Math.PI/2);
+    return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color, transparent:true, opacity:op, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide, fog:false})); };
+  grp.add(mk(0.33,2.0,0xff4d12,0.5));    // outer orange jet
+  grp.add(mk(0.18,1.35,0xffd060,0.9));   // inner yellow-white core
+  grp.visible=false; return grp;
 }
 
 /* =========================================================================
@@ -1066,6 +1117,7 @@ function upgradeCars(){
     const scaleG=new THREE.Group(); scaleG.scale.setScalar(sc); scaleG.rotation.y=carYaw; scaleG.add(asm);
     rig.group.add(scaleG);
     rig.chassis=chassis; rig.wheels=wheels; rig.front=front; rig.spinAcc=0;
+    if(rig.flames) rig.flames.forEach(f=>rig.group.add(f));   // re-attach exhaust flames (group was wiped above)
     if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
   });
 }
@@ -1232,12 +1284,16 @@ function updateCar(c, inp, dt){
       }
       if(c.skidTimer<=0 && skidPool.length){ dropSkid(rx,rz,c.heading); c.skidTimer=0.03; }
     }
-    if(c.boosting){                                               // flames out the rear exhaust tips
+    if(c.boosting){                                               // thin spark trail out the exhaust (not a cloud)
       const fwx=Math.sin(c.heading), fwz=Math.cos(c.heading), rix=Math.cos(c.heading), riz=-Math.sin(c.heading);
       const bx2=c.pos.x-fwx*2.25, bz2=c.pos.y-fwz*2.25;           // rear of the car
       for(let s=-1;s<=1;s+=2){ const exx=bx2+rix*0.45*s, ezz=bz2+riz*0.45*s;
-        for(let k=0;k<2;k++) sparks.emit(exx,0.5,ezz, -fwx*7+(Math.random()-.5)*2, 0.5+Math.random()*0.8, -fwz*7+(Math.random()-.5)*2, 0.30, 8+Math.random()*8); }
+        sparks.emit(exx,0.55,ezz, -fwx*13+(Math.random()-.5)*1.5, 0.25+Math.random()*0.5, -fwz*13+(Math.random()-.5)*1.5, 0.20, 2.5+Math.random()*2.5); }
     }
+  }
+  if(c.rig.flames){                                               // flicker the twin exhaust flares while boosting
+    const on=c.boosting;
+    for(const f of c.rig.flames){ f.visible=on; if(on) f.scale.set(0.8+Math.random()*0.3, 0.8+Math.random()*0.3, 0.7+Math.random()*0.6); }
   }
 }
 
