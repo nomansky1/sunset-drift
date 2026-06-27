@@ -759,18 +759,6 @@ function buildBlockBuildings(rng, palette, densityPct, maxH){
   list.forEach((b,k)=>{ _m.makeScale(b.fw,b.h,b.fd); _m.setPosition(b.x,terrainHeight(b.x,b.z),b.z); inst.setMatrixAt(k,_m); inst.setColorAt(k,cols[b.ci]); });
   inst.instanceMatrix.needsUpdate=true; if(inst.instanceColor)inst.instanceColor.needsUpdate=true; inst.castShadow=inst.receiveShadow=!isTouch; scene.add(inst);
 }
-// metal guardrails lining the road
-function buildGuardrails(rng, color){
-  const postGeo=new THREE.BoxGeometry(0.28,1.0,0.28); postGeo.translate(0,0.5,0);
-  const railGeo=new THREE.BoxGeometry(0.12,0.45,4.6);
-  const mat=new THREE.MeshStandardMaterial({color, roughness:0.45, metalness:0.7});
-  const off=CONFIG.roadHalfWidth+0.5, _m=new THREE.Matrix4(), posts=[], rails=[];
-  for(let i=0;i<SAMPLES;i+=6){ const p=samplePts[i], n=sampleNorm[i], t=sampleTan[i], ang=Math.atan2(t.x,t.y);
-    [1,-1].forEach(s=>{ const x=p.x+n.x*off*s, z=p.y+n.y*off*s; _m.makeTranslation(x,0,z); posts.push(_m.clone());
-      _m.makeRotationY(ang); _m.setPosition(x,0.85,z); rails.push(_m.clone()); }); }
-  const pi=new THREE.InstancedMesh(postGeo,mat,posts.length); posts.forEach((m,k)=>pi.setMatrixAt(k,m)); pi.instanceMatrix.needsUpdate=true; pi.castShadow=!isTouch; scene.add(pi);
-  const ri=new THREE.InstancedMesh(railGeo,mat,rails.length); rails.forEach((m,k)=>ri.setMatrixAt(k,m)); ri.instanceMatrix.needsUpdate=true; ri.castShadow=!isTouch; scene.add(ri);
-}
 // CONTINUOUS solid red/white hazard barrier hugging the road edge, terrain-following, on EVERY track
 function makeHazardTex(){
   const c=document.createElement('canvas'); c.width=64; c.height=16; const x=c.getContext('2d');
@@ -977,15 +965,17 @@ function buildLights(sunDir){
     scene.add(new THREE.HemisphereLight(0xffd9a0, 0x3a2f1c, 0.85));
     scene.add(new THREE.AmbientLight(0xffffff, 0.18));
   }
-  const sun=new THREE.DirectionalLight(nightMode?0x9fb4ff:0xffe0b0, nightMode?0.55:2.2);
-  sun.position.set(trackCentroid.x+sunDir.x*140, sunDir.y*140, trackCentroid.y+sunDir.z*140);
+  const sun=new THREE.DirectionalLight(nightMode?0x9fb4ff:0xfff0d8, nightMode?0.55:2.55);
+  // raise the SHADOW-casting light to a healthy elevation (grounded shadows) while the visual sun disc stays low/dramatic
+  const ld=new THREE.Vector3(sunDir.x, Math.max(sunDir.y, 0.62), sunDir.z).normalize();
+  sun.position.set(trackCentroid.x+ld.x*160, ld.y*160, trackCentroid.y+ld.z*160);
   sun.target.position.set(trackCentroid.x,0,trackCentroid.y); scene.add(sun.target);
   sun.castShadow=true;
   const s=72;                              // tight shadow box that follows the car each frame (crisp shadows)
   sun.shadow.camera.left=-s; sun.shadow.camera.right=s; sun.shadow.camera.top=s; sun.shadow.camera.bottom=-s;
-  sun.shadow.camera.near=10; sun.shadow.camera.far=340;
-  sun.shadow.mapSize.set(isTouch?1024:2048, isTouch?1024:2048);
-  sun.shadow.bias=-0.0006; sun.shadow.normalBias=0.7;
+  sun.shadow.camera.near=10; sun.shadow.camera.far=360;
+  sun.shadow.mapSize.set(isTouch?1024:2048, isTouch?2048:2048);
+  sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.45; sun.shadow.radius=isTouch?2:3.5;   // soft PCF edges
   scene.add(sun); sunLight=sun;
 }
 
