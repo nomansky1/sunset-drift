@@ -162,6 +162,7 @@
   <div id="togRow">
     <div class="tog" id="togNight">🌙 NIGHT</div>
     <div class="tog" id="togRain">🌧 RAIN</div>
+    <div class="tog" id="togLow">⚡ LITE</div>
   </div>
   <div class="cta" id="startBtn">TAP TO RACE</div>
   <div class="keys" id="keysHint">
@@ -294,7 +295,7 @@ const _v = new THREE.Vector2(), _f = new THREE.Vector2(), _l = new THREE.Vector2
 const _cd = new THREE.Vector3(), _cl = new THREE.Vector3();   // camera scratch (no per-frame allocs)
 let camShake = 0;                       // decaying camera-shake impulse
 let composer = null, bloomPass = null, cinePass = null;  // post-processing (bloom + cinematic grade/blur)
-let nightMode = false, rainOn = false;                   // weather / time-of-day toggles
+let nightMode = false, rainOn = false, lowQuality = false; // weather / time-of-day / perf toggles
 let rainSys = null, rainGeo = null, rainPos = null, rainData = null;  // camera-following rain streaks
 
 /* =========================================================================
@@ -517,6 +518,9 @@ function buildTrackMeshes(){
     normalMap:grain('textures/road_normal.jpg'), normalScale:new THREE.Vector2(0.8,0.8),
     roughnessMap:grain('textures/road_rough.jpg'), roughness:0.42, metalness:0.1,
     emissiveMap:roadMap, emissive:0xffffff, emissiveIntensity:0.42 }); // self-light the lane markings at dusk (+ bloom-ready)
+  if(rainOn){                                            // wet asphalt: darker + glossy reflective sheen
+    roadMat.color=new THREE.Color(0x6e6e76); roadMat.roughness=0.16; roadMat.metalness=0.5; roadMat.emissiveIntensity=0.26;
+  }
 
   scene.add(buildRibbon(CONFIG.roadHalfWidth, 0.07, null, null, null, 1, null, roadMat)); // textured road (v=world units)
   // GTA-style raised sidewalks + curb on both sides (the curb is also our barrier)
@@ -650,7 +654,7 @@ function buildTerrain(){
     mesh.receiveShadow=true; scene.add(mesh); return;
   }
   // procedural heightfield (hills/mountains/canyon) with altitude biome colours
-  const SEG=isTouch?160:220;
+  const SEG=lowQuality?110:(isTouch?160:220);
   const g=new THREE.PlaneGeometry(2400,2400,SEG,SEG); g.rotateX(-Math.PI/2);
   const pos=g.attributes.position, cnt=pos.count, colors=new Float32Array(cnt*3), col=new THREE.Color();
   for(let i=0;i<cnt;i++){ const x=pos.getX(i), z=pos.getZ(i), h=terrainHeight(x,z); pos.setY(i,h);
@@ -790,18 +794,25 @@ function buildCoast(rng){
 }
 // DOCKS: stacked shipping containers + warehouses + guardrails
 function buildDocks(rng){
-  const COLORS=['#b23a3a','#2a6fb2','#2a9d54','#d39a2a','#8a8a92','#6a3a8a'];
-  const geo=new THREE.BoxGeometry(6,2.6,2.6); geo.translate(0,1.3,0);
-  const mats=COLORS.map(c=>new THREE.MeshStandardMaterial({color:c, roughness:0.7, metalness:0.25}));
-  const lists=COLORS.map(()=>[]), _m=new THREE.Matrix4(), block=48, span=760;
+  const _m=new THREE.Matrix4(), block=48, span=760, positions=[];
   for(let gx=-span;gx<=span;gx+=block) for(let gz=-span;gz<=span;gz+=block){
     const x=gx+(rng()-0.5)*10, z=gz+(rng()-0.5)*10;
     if(distToTrackApprox(x,z)<CONFIG.roadHalfWidth+14) continue; if(rng()<0.45) continue;
-    const stack=1+Math.floor(rng()*3);
-    for(let s=0;s<stack;s++){ const ci=Math.floor(rng()*COLORS.length); _m.makeRotationY(rng()>0.5?0:Math.PI/2); _m.setPosition(x,s*2.6,z); lists[ci].push(_m.clone()); }
+    positions.push({x,z, stack:1+Math.floor(rng()*3), rotY:rng()>0.5?0:Math.PI/2});
   }
-  mats.forEach((mat,ci)=>{ if(!lists[ci].length) return; const inst=new THREE.InstancedMesh(geo,mat,lists[ci].length);
-    lists[ci].forEach((m,k)=>inst.setMatrixAt(k,m)); inst.instanceMatrix.needsUpdate=true; inst.castShadow=inst.receiveShadow=!isTouch; scene.add(inst); });
+  if(propsReady && propModels.container){                    // real CC0 shipping containers, stacked
+    const SCL=6, H=2.93, xf=[];
+    positions.forEach(p=>{ for(let s=0;s<p.stack;s++) xf.push(propMat(p.x,p.z, SCL, p.rotY, s*H)); });
+    instProp(propModels.container, xf);
+  } else {
+    const COLORS=['#b23a3a','#2a6fb2','#2a9d54','#d39a2a','#8a8a92','#6a3a8a'];
+    const geo=new THREE.BoxGeometry(6,2.6,2.6); geo.translate(0,1.3,0);
+    const mats=COLORS.map(c=>new THREE.MeshStandardMaterial({color:c, roughness:0.7, metalness:0.25}));
+    const lists=COLORS.map(()=>[]);
+    positions.forEach(p=>{ for(let s=0;s<p.stack;s++){ const ci=Math.floor(rng()*COLORS.length); _m.makeRotationY(p.rotY); _m.setPosition(p.x,s*2.6,p.z); lists[ci].push(_m.clone()); } });
+    mats.forEach((mat,ci)=>{ if(!lists[ci].length) return; const inst=new THREE.InstancedMesh(geo,mat,lists[ci].length);
+      lists[ci].forEach((m,k)=>inst.setMatrixAt(k,m)); inst.instanceMatrix.needsUpdate=true; inst.castShadow=inst.receiveShadow=!isTouch; scene.add(inst); });
+  }
   buildBlockBuildings(rng, ['#585c63','#6a6055','#494d54','#5a5550'], 0.42, 26);
   buildGuardrails(rng, 0xc8b020);
 }
@@ -810,18 +821,26 @@ function buildDesert(rng){
   const _m=new THREE.Matrix4(), q=new THREE.Quaternion(), pv=new THREE.Vector3(), sv=new THREE.Vector3(), ax=new THREE.Vector3(0,1,0), rocks=[];
   for(let k=0;k<32;k++){ const a=rng()*6.283, rad=trackRadius+25+rng()*270, x=trackCentroid.x+Math.cos(a)*rad, z=trackCentroid.y+Math.sin(a)*rad;
     if(distToTrackApprox(x,z)<24) continue; rocks.push({x,z,h:12+rng()*34,r:7+rng()*13,ry:rng()*6}); }
-  const rgeo=new THREE.ConeGeometry(1,1,6,1); rgeo.translate(0,0.5,0);
-  const rmesh=new THREE.InstancedMesh(rgeo, new THREE.MeshStandardMaterial({color:0xb0603a,flatShading:true,roughness:1}), rocks.length);
-  rocks.forEach((b,k)=>{ q.setFromAxisAngle(ax,b.ry); _m.compose(pv.set(b.x,terrainHeight(b.x,b.z),b.z), q, sv.set(b.r,b.h,b.r*0.8)); rmesh.setMatrixAt(k,_m); });
-  rmesh.instanceMatrix.needsUpdate=true; rmesh.castShadow=!isTouch; scene.add(rmesh);
-  const cactMat=new THREE.MeshStandardMaterial({color:0x4f8a4a, flatShading:true, roughness:1});
-  let placed=0;
-  for(let k=0;k<60 && placed<18;k++){ const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>.5?1:-1, off=CONFIG.roadHalfWidth+4+rng()*16;
+  if(propsReady && propModels.desertrock){                   // real CC0 red-rock formations
+    instProp(propModels.desertrock, rocks.map(b=> propMat(b.x,b.z, b.r*1.5, b.ry, -0.5)));
+  } else {
+    const rgeo=new THREE.ConeGeometry(1,1,6,1); rgeo.translate(0,0.5,0);
+    const rmesh=new THREE.InstancedMesh(rgeo, new THREE.MeshStandardMaterial({color:0xb0603a,flatShading:true,roughness:1}), rocks.length);
+    rocks.forEach((b,k)=>{ q.setFromAxisAngle(ax,b.ry); _m.compose(pv.set(b.x,terrainHeight(b.x,b.z),b.z), q, sv.set(b.r,b.h,b.r*0.8)); rmesh.setMatrixAt(k,_m); });
+    rmesh.instanceMatrix.needsUpdate=true; rmesh.castShadow=!isTouch; scene.add(rmesh);
+  }
+  const cacti=[];                                            // cacti only on flat low sand, not mesa slopes
+  for(let k=0;k<60 && cacti.length<18;k++){ const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>.5?1:-1, off=CONFIG.roadHalfWidth+4+rng()*16;
     const x=p.x+n.x*off*side, z=p.y+n.y*off*side; if(distToTrackApprox(x,z)<CONFIG.roadHalfWidth+2) continue;
-    if(heightFrac(x,z)>0.25 || terrainSlope(x,z)>0.33) continue;     // cacti only on flat low sand, not mesa slopes
-    const g=new THREE.Group(), hh=3+rng()*3; const b=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.7,hh,6), cactMat); b.position.y=hh/2; g.add(b);
-    for(let s=-1;s<=1;s+=2){ const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.4,1.5,6), cactMat); arm.position.set(s*0.7,hh*0.55,0); arm.rotation.z=s*0.5; g.add(arm); }
-    g.position.set(x,terrainHeight(x,z),z); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); placed++; }
+    if(heightFrac(x,z)>0.25 || terrainSlope(x,z)>0.33) continue;
+    cacti.push({x,z,h:3+rng()*3,ry:rng()*6.283}); }
+  if(propsReady && propModels.cactus){
+    instProp(propModels.cactus, cacti.map(c=> propMat(c.x,c.z, c.h, c.ry)));
+  } else {
+    const cactMat=new THREE.MeshStandardMaterial({color:0x4f8a4a, flatShading:true, roughness:1});
+    cacti.forEach(c=>{ const g=new THREE.Group(), hh=c.h; const b=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.7,hh,6), cactMat); b.position.y=hh/2; g.add(b);
+      for(let s=-1;s<=1;s+=2){ const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.4,1.5,6), cactMat); arm.position.set(s*0.7,hh*0.55,0); arm.rotation.z=s*0.5; g.add(arm); }
+      g.position.set(c.x,terrainHeight(c.x,c.z),c.z); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); }); }
   buildGuardrails(rng, 0xc89858);
 }
 // FOREST: instanced pine trees + boulders
@@ -1059,6 +1078,9 @@ const PROP_SPECS={
   tree:{file:'models/cc0/tree.glb', fit:'height'},   // Quaternius broadleaf (CC0)
   palm:{file:'models/cc0/palm.glb', fit:'height'},   // Quaternius palm (CC0)
   rock:{file:'models/cc0/rock.glb', fit:'xz'},       // Kenney flat rock (CC0)
+  desertrock:{file:'models/cc0/desertrock.glb', fit:'max'}, // Kenney rock formation (CC0)
+  cactus:{file:'models/cc0/cactus.glb', fit:'height'},      // Quaternius cactus (CC0)
+  container:{file:'models/cc0/container.glb', fit:'max'},   // Quaternius shipping container (CC0)
 };
 function prepProp(root, fit){           // bake -> normalize (base y=0, centred XZ, ref dim = 1); returns [{geometry,material}]
   root.updateMatrixWorld(true);
@@ -1627,6 +1649,10 @@ function init(){
   const togNight=document.getElementById('togNight'), togRain=document.getElementById('togRain');
   togNight.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return; nightMode=!nightMode; togNight.classList.toggle('on',nightMode); selectTrack(currentTrack); });
   togRain.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return; rainOn=!rainOn; togRain.classList.toggle('on',rainOn); selectTrack(currentTrack); });
+  const togLow=document.getElementById('togLow');
+  togLow.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return;
+    lowQuality=!lowQuality; togLow.classList.toggle('on',lowQuality);
+    renderer.shadowMap.enabled=!lowQuality; onResize(); selectTrack(currentTrack); });
   document.getElementById('menu').addEventListener('click', e=>{ if(state==='menu') startGame(); });
   document.getElementById('againBtn').addEventListener('click', startGame);
   addEventListener('resize', onResize); onResize(); checkOrient();
@@ -1639,13 +1665,15 @@ function init(){
     setCarYaw:(v)=>{carYaw=v; upgradeCars();}, press:(k,v)=>{keys[k]=v;}, start:startGame,
     setNight:(v)=>{nightMode=!!v; document.getElementById('togNight').classList.toggle('on',nightMode); selectTrack(currentTrack);},
     setRain:(v)=>{rainOn=!!v; document.getElementById('togRain').classList.toggle('on',rainOn); selectTrack(currentTrack);},
-    get rainVisible(){return !!(rainSys&&rainSys.visible);}, get night(){return nightMode;} };
+    get rainVisible(){return !!(rainSys&&rainSys.visible);}, get night(){return nightMode;},
+    setLow:(v)=>{lowQuality=!!v; document.getElementById('togLow').classList.toggle('on',lowQuality); renderer.shadowMap.enabled=!lowQuality; onResize(); selectTrack(currentTrack);},
+    get low(){return lowQuality;}, get pixelRatio(){return renderer.getPixelRatio();} };
 
   buildComposer();
   animate();
 }
 function onResize(){ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch?1.5:2)); renderer.setSize(innerWidth, innerHeight);
+  renderer.setPixelRatio(lowQuality ? Math.min(devicePixelRatio,1) : Math.min(devicePixelRatio, isTouch?1.5:2)); renderer.setSize(innerWidth, innerHeight);
   if(composer) composer.setSize(innerWidth, innerHeight); checkOrient(); }
 function checkOrient(){ document.body.classList.toggle('portrait', isTouch && innerHeight>innerWidth); }
 
