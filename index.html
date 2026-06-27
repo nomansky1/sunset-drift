@@ -581,6 +581,11 @@ function biomeColor(h, col){
   else if(terrainBiome==='coast'){ col.setHex(f<0.12?0xd8c088 : 0x7a8a52); }
   else col.setHex(0x808080);
 }
+function terrainSlope(x,z){                               // local steepness (rise/run) for placement rules
+  if(terrainAmp<=0) return 0; const e=4;
+  return Math.hypot(terrainHeight(x+e,z)-terrainHeight(x-e,z), terrainHeight(x,z+e)-terrainHeight(x,z-e))/(2*e);
+}
+function heightFrac(x,z){ return terrainHeight(x,z)/(terrainAmp*1.3||1); }   // 0 = valley floor .. ~1 = peaks
 function buildTerrain(){
   if(terrainAmp<=0){                                     // flat themes (city / docks) keep the textured plane
     const tex=makeCityGroundTexture(currentTheme?currentTheme.groundHex:'#33363d'); tex.repeat.set(22,22);
@@ -747,18 +752,34 @@ function buildDesert(rng){
   rocks.forEach((b,k)=>{ q.setFromAxisAngle(ax,b.ry); _m.compose(pv.set(b.x,terrainHeight(b.x,b.z),b.z), q, sv.set(b.r,b.h,b.r*0.8)); rmesh.setMatrixAt(k,_m); });
   rmesh.instanceMatrix.needsUpdate=true; rmesh.castShadow=!isTouch; scene.add(rmesh);
   const cactMat=new THREE.MeshStandardMaterial({color:0x4f8a4a, flatShading:true, roughness:1});
-  for(let k=0;k<14;k++){ const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>.5?1:-1, off=CONFIG.roadHalfWidth+3+rng()*7;
+  let placed=0;
+  for(let k=0;k<60 && placed<18;k++){ const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>.5?1:-1, off=CONFIG.roadHalfWidth+4+rng()*16;
     const x=p.x+n.x*off*side, z=p.y+n.y*off*side; if(distToTrackApprox(x,z)<CONFIG.roadHalfWidth+2) continue;
+    if(heightFrac(x,z)>0.25 || terrainSlope(x,z)>0.33) continue;     // cacti only on flat low sand, not mesa slopes
     const g=new THREE.Group(), hh=3+rng()*3; const b=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.7,hh,6), cactMat); b.position.y=hh/2; g.add(b);
     for(let s=-1;s<=1;s+=2){ const arm=new THREE.Mesh(new THREE.CylinderGeometry(0.34,0.4,1.5,6), cactMat); arm.position.set(s*0.7,hh*0.55,0); arm.rotation.z=s*0.5; g.add(arm); }
-    g.position.set(x,0,z); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); }
+    g.position.set(x,terrainHeight(x,z),z); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); placed++; }
   buildGuardrails(rng, 0xc89858);
 }
 // FOREST: instanced pine trees + boulders
 function buildForest(rng){
   const _m=new THREE.Matrix4(), q=new THREE.Quaternion(), pv=new THREE.Vector3(), sv=new THREE.Vector3(), trees=[];
-  for(let k=0;k<90;k++){ const a=rng()*6.283, rad=CONFIG.roadHalfWidth+6+rng()*300, x=trackCentroid.x+Math.cos(a)*rad, z=trackCentroid.y+Math.sin(a)*rad;
-    if(distToTrackApprox(x,z)<CONFIG.roadHalfWidth+4) continue; trees.push({x,z,sc:0.8+rng()*0.7}); }
+  // clustered pines on the lower, gentler slopes; thin + shrink toward the treeline; bare rock/snow above
+  const TREELINE=0.58;
+  for(let c=0;c<16;c++){
+    let cx=0,cz=0,ok=false,tries=0;
+    while(!ok && tries++<30){ const a=rng()*6.283, rad=CONFIG.roadHalfWidth+16+rng()*280; cx=trackCentroid.x+Math.cos(a)*rad; cz=trackCentroid.y+Math.sin(a)*rad;
+      ok = distToTrackApprox(cx,cz)>CONFIG.roadHalfWidth+5 && heightFrac(cx,cz)<TREELINE-0.12 && terrainSlope(cx,cz)<0.5; }
+    if(!ok) continue;
+    const n=6+Math.floor(rng()*9);
+    for(let k=0;k<n;k++){ const ang=rng()*6.283, dr=rng()*24, x=cx+Math.cos(ang)*dr, z=cz+Math.sin(ang)*dr;
+      if(distToTrackApprox(x,z)<CONFIG.roadHalfWidth+4) continue;
+      const f=heightFrac(x,z); if(f>TREELINE || terrainSlope(x,z)>0.7) continue;
+      const edge=clamp((TREELINE-f)/TREELINE,0,1);          // 1 in the valley, 0 at the treeline
+      if(rng()>0.4+0.6*edge) continue;                       // sparser higher up
+      trees.push({x,z,sc:(0.7+rng()*0.7)*(0.55+0.45*edge)}); // smaller higher up
+    }
+  }
   const trunkGeo=new THREE.CylinderGeometry(0.35,0.5,2.5,6); trunkGeo.translate(0,1.25,0);
   const trunk=new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({color:0x5a3f28,roughness:1}), trees.length);
   const pineGeo=new THREE.ConeGeometry(2.4,6,7); pineGeo.translate(0,5.5,0);
