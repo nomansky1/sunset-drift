@@ -64,6 +64,10 @@
   .trackBtn b{ font-size:min(3.5vw,14px); letter-spacing:.5px; }
   .trackBtn span{ font-size:min(2.8vw,10px); opacity:.65; margin-top:2px; }
   .trackBtn.sel{ border-color:#ffd23b; background:rgba(255,120,60,.30); box-shadow:0 6px 20px rgba(255,90,60,.35); transform:translateY(-2px); }
+  #togRow{ display:flex; gap:10px; justify-content:center; margin-top:14px; }
+  .tog{ pointer-events:auto; padding:8px 16px; border-radius:20px; border:2px solid rgba(255,255,255,.20);
+        background:rgba(30,16,42,.5); font-size:min(3vw,12px); font-weight:700; letter-spacing:.5px; cursor:pointer; transition:.12s; }
+  .tog.on{ border-color:#7cc0ff; background:rgba(70,150,255,.32); box-shadow:0 4px 16px rgba(70,150,255,.35); }
   .cta{ margin-top:30px; font-size:min(6vw,26px); font-weight:900; padding:16px 34px; border-radius:40px;
         background:linear-gradient(90deg,#ff5a3c,#ffd23b); color:var(--ink);
         box-shadow:0 10px 30px rgba(255,90,60,.45); animation:bob 1.4s ease-in-out infinite; }
@@ -154,6 +158,10 @@
     <div class="trackBtn" data-i="2"><b>THE DOCKS</b><span>Industrial</span></div>
     <div class="trackBtn" data-i="3"><b>DESERT RUN</b><span>Red Canyon</span></div>
     <div class="trackBtn" data-i="4"><b>PINE PASS</b><span>Forest</span></div>
+  </div>
+  <div id="togRow">
+    <div class="tog" id="togNight">🌙 NIGHT</div>
+    <div class="tog" id="togRain">🌧 RAIN</div>
   </div>
   <div class="cta" id="startBtn">TAP TO RACE</div>
   <div class="keys" id="keysHint">
@@ -286,6 +294,8 @@ const _v = new THREE.Vector2(), _f = new THREE.Vector2(), _l = new THREE.Vector2
 const _cd = new THREE.Vector3(), _cl = new THREE.Vector3();   // camera scratch (no per-frame allocs)
 let camShake = 0;                       // decaying camera-shake impulse
 let composer = null, bloomPass = null, cinePass = null;  // post-processing (bloom + cinematic grade/blur)
+let nightMode = false, rainOn = false;                   // weather / time-of-day toggles
+let rainSys = null, rainGeo = null, rainPos = null, rainData = null;  // camera-following rain streaks
 
 /* =========================================================================
    PARTICLES  — soft round points that fade per-particle (custom shader)
@@ -797,9 +807,11 @@ function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.im
 
 function buildSky(){
   const TH=currentTheme||{sky:{top:CONFIG.colors.skyTop,bot:CONFIG.colors.skyBot,sun:CONFIG.colors.sun},sun:[-0.5,0.12,-0.85]};
+  const topC=new THREE.Color(TH.sky.top), botC=new THREE.Color(TH.sky.bot), sunC=new THREE.Color(TH.sky.sun);
+  if(nightMode){ topC.setHex(0x05070f); botC.setHex(0x161d33); sunC.setHex(0xcfe0ff); }   // moonlit night
   const geo=new THREE.SphereGeometry(1400,24,16);
   const mat=new THREE.ShaderMaterial({ side:THREE.BackSide, depthWrite:false, fog:false,
-    uniforms:{ top:{value:new THREE.Color(TH.sky.top)}, bot:{value:new THREE.Color(TH.sky.bot)} },
+    uniforms:{ top:{value:topC}, bot:{value:botC} },
     vertexShader:`varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
     fragmentShader:`varying vec3 vP; uniform vec3 top; uniform vec3 bot;
       void main(){ float h=clamp((normalize(vP).y+0.15)/0.9,0.0,1.0); gl_FragColor=vec4(mix(bot,top,h),1.0); }`
@@ -809,13 +821,15 @@ function buildSky(){
   // sun disc low on the horizon + soft halo
   const sunDir=new THREE.Vector3(TH.sun[0],TH.sun[1],TH.sun[2]).normalize(); sunDirV=sunDir;
   const sunPos=sunDir.clone().multiplyScalar(1100);
-  const sun=new THREE.Mesh(new THREE.CircleGeometry(95,32), new THREE.MeshBasicMaterial({color:TH.sky.sun, fog:false}));
+  const sun=new THREE.Mesh(new THREE.CircleGeometry(nightMode?52:95,32), new THREE.MeshBasicMaterial({color:sunC, fog:false}));
   sun.position.copy(sunPos); sun.lookAt(0,sunPos.y,0); scene.add(sun);
   const halo=document.createElement('canvas'); halo.width=halo.height=128; const hx=halo.getContext('2d');
-  const grd=hx.createRadialGradient(64,64,4,64,64,64); grd.addColorStop(0,'rgba(255,240,190,.9)'); grd.addColorStop(1,'rgba(255,200,120,0)');
+  const grd=hx.createRadialGradient(64,64,4,64,64,64);
+  if(nightMode){ grd.addColorStop(0,'rgba(200,220,255,.5)'); grd.addColorStop(1,'rgba(160,190,255,0)'); }
+  else { grd.addColorStop(0,'rgba(255,240,190,.9)'); grd.addColorStop(1,'rgba(255,200,120,0)'); }
   hx.fillStyle=grd; hx.fillRect(0,0,128,128);
   const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(halo), blending:THREE.AdditiveBlending, depthWrite:false, fog:false}));
-  sp.position.copy(sunPos); sp.scale.set(520,520,1); scene.add(sp);
+  sp.position.copy(sunPos); sp.scale.set(nightMode?300:520, nightMode?300:520, 1); scene.add(sp);
   return sunDir;
 }
 
@@ -842,9 +856,14 @@ function buildEnvironment(){
   }
 }
 function buildLights(sunDir){
-  scene.add(new THREE.HemisphereLight(0xffd9a0, 0x3a2f1c, 0.85));
-  scene.add(new THREE.AmbientLight(0xffffff, 0.18));
-  const sun=new THREE.DirectionalLight(0xffe0b0, 2.2);
+  if(nightMode){
+    scene.add(new THREE.HemisphereLight(0x3a4a7a, 0x05060c, 0.45));
+    scene.add(new THREE.AmbientLight(0x2a3358, 0.22));
+  } else {
+    scene.add(new THREE.HemisphereLight(0xffd9a0, 0x3a2f1c, 0.85));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+  }
+  const sun=new THREE.DirectionalLight(nightMode?0x9fb4ff:0xffe0b0, nightMode?0.55:2.2);
   sun.position.set(trackCentroid.x+sunDir.x*140, sunDir.y*140, trackCentroid.y+sunDir.z*140);
   sun.target.position.set(trackCentroid.x,0,trackCentroid.y); scene.add(sun.target);
   sun.castShadow=true;
@@ -1330,6 +1349,7 @@ function buildComposer(){
 }
 function animate(){ requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(),0.05); update(dt);
+  if(rainOn) updateRain(dt);
   if(composer) composer.render(); else renderer.render(scene,camera); }
 
 /* =========================================================================
@@ -1394,20 +1414,52 @@ function buildWorld(idx){
   const t=currentTheme.theme;                                       // tone per lighting mood
   const bright = t==='desert' || t==='forest';                      // open full-daylight
   const warm   = t==='coast';                                       // bright sunset (still glowy, but don't clip white)
-  renderer.toneMappingExposure = bright ? 0.82 : warm ? 0.84 : 1.18;
-  if(bloomPass){
-    bloomPass.strength  = bright ? 0.28 : warm ? 0.34 : (isTouch?0.55:0.7);
-    bloomPass.threshold = bright ? 0.97 : warm ? 0.95 : 0.82;
+  if(nightMode){
+    renderer.toneMappingExposure = 1.0;
+    if(bloomPass){ bloomPass.strength = isTouch?0.85:1.05; bloomPass.threshold = 0.6; }   // neon + lights pop
+  } else {
+    renderer.toneMappingExposure = bright ? 0.82 : warm ? 0.84 : 1.18;
+    if(bloomPass){
+      bloomPass.strength  = bright ? 0.28 : warm ? 0.34 : (isTouch?0.55:0.7);
+      bloomPass.threshold = bright ? 0.97 : warm ? 0.95 : 0.82;
+    }
   }
   if(WORLD){ scene.remove(WORLD); disposeGroup(WORLD); }
   WORLD=new THREE.Group(); scene.add(WORLD);
-  scene.fog=new THREE.Fog(currentTheme.fog, 120, 760);
+  let fogCol = nightMode ? 0x0b1020 : currentTheme.fog;
+  if(rainOn) fogCol = nightMode ? 0x0a0e18 : 0x9aa3ad;              // rain greys the air
+  scene.fog=new THREE.Fog(fogCol, rainOn?80:120, rainOn?540:760);
   scene.add=function(o){ WORLD.add(o); return scene; };          // route world builders into WORLD
   try{
     buildTrackTables(currentTheme.ctrl);
     buildLights(buildSky());                                      // buildSky sets sunDirV + returns sunDir
     buildTerrain(); buildTrackMeshes(); scatterProps();
   } finally { delete scene.add; }                                // restore the real Object3D.add
+  ensureRain();                                                  // rain persists outside WORLD (real scene.add)
+}
+const RAIN_AREA=95, RAIN_HI=82, RAIN_SLANT=0.16;          // concentrated near the camera + windblown lean
+function ensureRain(){
+  if(!rainSys){
+    const N=isTouch?650:1050;
+    rainData=[]; rainPos=new Float32Array(N*2*3);
+    for(let i=0;i<N;i++){ rainData.push({ x:(Math.random()-0.5)*RAIN_AREA, y:Math.random()*RAIN_HI, z:(Math.random()-0.5)*RAIN_AREA,
+      len:3.2+Math.random()*3.2, v:62+Math.random()*34 }); }
+    rainGeo=new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos,3));
+    const mat=new THREE.LineBasicMaterial({color:0xdce8f5, transparent:true, opacity:0.5, depthWrite:false});
+    rainSys=new THREE.LineSegments(rainGeo, mat); rainSys.frustumCulled=false; rainSys.renderOrder=3; scene.add(rainSys);
+  }
+  rainSys.visible = rainOn;
+}
+function updateRain(dt){
+  if(!rainSys || !rainSys.visible) return;
+  const cx=camera.position.x, cz=camera.position.z, p=rainPos;
+  for(let i=0;i<rainData.length;i++){ const d=rainData[i];
+    d.y-=d.v*dt; if(d.y<0){ d.y+=RAIN_HI; d.x=(Math.random()-0.5)*RAIN_AREA; d.z=(Math.random()-0.5)*RAIN_AREA; }
+    const wx=cx+d.x, wz=cz+d.z, sl=d.len*RAIN_SLANT, k=i*6;
+    p[k]=wx;      p[k+1]=d.y;       p[k+2]=wz;
+    p[k+3]=wx+sl; p[k+4]=d.y-d.len; p[k+5]=wz;          // lean the streak for a windblown look
+  }
+  rainGeo.attributes.position.needsUpdate=true;
 }
 function selectTrack(idx){
   buildWorld(idx); initMap(); placeGrid();
@@ -1460,6 +1512,9 @@ function init(){
   bindKeys(); bindTouch();
   document.getElementById('startBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
   document.querySelectorAll('.trackBtn').forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); if(state==='menu') selectTrack(+b.dataset.i); }));
+  const togNight=document.getElementById('togNight'), togRain=document.getElementById('togRain');
+  togNight.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return; nightMode=!nightMode; togNight.classList.toggle('on',nightMode); selectTrack(currentTrack); });
+  togRain.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return; rainOn=!rainOn; togRain.classList.toggle('on',rainOn); selectTrack(currentTrack); });
   document.getElementById('menu').addEventListener('click', e=>{ if(state==='menu') startGame(); });
   document.getElementById('againBtn').addEventListener('click', startGame);
   addEventListener('resize', onResize); onResize(); checkOrient();
@@ -1469,7 +1524,10 @@ function init(){
   window.GAME={ get state(){return state;}, get player(){return player;}, get cars(){return cars;},
     get joyX(){return joyX;}, setJoy:(v)=>{joyX=v;}, sceneCount:()=>scene.children.length,
     get bloom(){return !!composer;}, get carReady(){return carReady;},
-    setCarYaw:(v)=>{carYaw=v; upgradeCars();}, press:(k,v)=>{keys[k]=v;}, start:startGame };
+    setCarYaw:(v)=>{carYaw=v; upgradeCars();}, press:(k,v)=>{keys[k]=v;}, start:startGame,
+    setNight:(v)=>{nightMode=!!v; document.getElementById('togNight').classList.toggle('on',nightMode); selectTrack(currentTrack);},
+    setRain:(v)=>{rainOn=!!v; document.getElementById('togRain').classList.toggle('on',rainOn); selectTrack(currentTrack);},
+    get rainVisible(){return !!(rainSys&&rainSys.visible);}, get night(){return nightMode;} };
 
   buildComposer();
   animate();
