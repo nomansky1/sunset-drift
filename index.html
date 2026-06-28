@@ -997,27 +997,39 @@ function buildSky(){
   const TH=currentTheme||{sky:{top:CONFIG.colors.skyTop,bot:CONFIG.colors.skyBot,sun:CONFIG.colors.sun},sun:[-0.5,0.12,-0.85]};
   const topC=new THREE.Color(TH.sky.top), botC=new THREE.Color(TH.sky.bot), sunC=new THREE.Color(TH.sky.sun);
   if(nightMode){ topC.setHex(0x05070f); botC.setHex(0x161d33); sunC.setHex(0xcfe0ff); }   // moonlit night
-  const geo=new THREE.SphereGeometry(1400,24,16);
+  const sunDir=new THREE.Vector3(TH.sun[0],TH.sun[1],TH.sun[2]).normalize(); sunDirV=sunDir;
+  const th=currentTheme?currentTheme.theme:'city';
+  const cloudAmt = nightMode?0.12 : (th==='desert'?0.45 : th==='forest'?0.7 : th==='coast'?0.55 : th==='docks'?0.4 : 0.3);
+  const geo=new THREE.SphereGeometry(1400,32,20);
   const mat=new THREE.ShaderMaterial({ side:THREE.BackSide, depthWrite:false, fog:false,
-    uniforms:{ top:{value:topC}, bot:{value:botC} },
+    uniforms:{ top:{value:topC}, bot:{value:botC}, sunDir:{value:sunDir.clone()}, sunCol:{value:sunC}, cloud:{value:cloudAmt}, night:{value:nightMode?1:0} },
     vertexShader:`varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-    fragmentShader:`varying vec3 vP; uniform vec3 top; uniform vec3 bot;
-      void main(){ float h=clamp((normalize(vP).y+0.15)/0.9,0.0,1.0); gl_FragColor=vec4(mix(bot,top,h),1.0); }`
+    fragmentShader:`varying vec3 vP; uniform vec3 top; uniform vec3 bot; uniform vec3 sunDir; uniform vec3 sunCol; uniform float cloud; uniform float night;
+      float hash(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+      float noise(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y); }
+      float fbm(vec2 p){ float v=0.0,a=0.55; for(int i=0;i<5;i++){ v+=a*noise(p); p=p*2.03+1.7; a*=0.5; } return v; }
+      void main(){
+        vec3 d=normalize(vP);
+        float h=clamp((d.y+0.12)/0.95,0.0,1.0);
+        vec3 horizon=mix(bot, vec3(1.0), 0.16*(1.0-night));
+        vec3 sky=mix(horizon, top, pow(h,0.8));
+        float sd=max(dot(d, normalize(sunDir)),0.0);
+        sky += sunCol*(pow(sd,6.0)*0.30 + pow(sd,220.0)*1.3)*(1.0-night*0.6);
+        if(d.y>0.03 && cloud>0.01){
+          vec2 uv=d.xz/(d.y+0.25)*0.9;
+          float c=smoothstep(0.5,0.78,fbm(uv*1.6))*clamp((d.y-0.03)*3.0,0.0,1.0)*cloud;
+          vec3 cc=mix(vec3(0.93), sunCol*0.5+vec3(0.45), 0.25)*(1.0-night*0.7);
+          sky=mix(sky, cc, c);
+        }
+        gl_FragColor=vec4(sky,1.0);
+      }`
   });
   scene.add(new THREE.Mesh(geo,mat));
-
-  // sun disc low on the horizon + soft halo
-  const sunDir=new THREE.Vector3(TH.sun[0],TH.sun[1],TH.sun[2]).normalize(); sunDirV=sunDir;
-  const sunPos=sunDir.clone().multiplyScalar(1100);
-  const sun=new THREE.Mesh(new THREE.CircleGeometry(nightMode?52:95,32), new THREE.MeshBasicMaterial({color:sunC, fog:false}));
+  // a small physical sun/moon disc (the glow is in the sky shader now — no harsh additive halo)
+  const sunPos=sunDir.clone().multiplyScalar(1180);
+  const sun=new THREE.Mesh(new THREE.CircleGeometry(nightMode?46:64,32), new THREE.MeshBasicMaterial({color:sunC, fog:false}));
   sun.position.copy(sunPos); sun.lookAt(0,sunPos.y,0); scene.add(sun);
-  const halo=document.createElement('canvas'); halo.width=halo.height=128; const hx=halo.getContext('2d');
-  const grd=hx.createRadialGradient(64,64,4,64,64,64);
-  if(nightMode){ grd.addColorStop(0,'rgba(200,220,255,.5)'); grd.addColorStop(1,'rgba(160,190,255,0)'); }
-  else { grd.addColorStop(0,'rgba(255,240,190,.9)'); grd.addColorStop(1,'rgba(255,200,120,0)'); }
-  hx.fillStyle=grd; hx.fillRect(0,0,128,128);
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(halo), blending:THREE.AdditiveBlending, depthWrite:false, fog:false}));
-  sp.position.copy(sunPos); sp.scale.set(nightMode?300:520, nightMode?300:520, 1); scene.add(sp);
   return sunDir;
 }
 
