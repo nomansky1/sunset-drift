@@ -164,11 +164,12 @@
               border:1px solid rgba(255,210,59,.5); box-shadow:0 4px 16px rgba(0,0,0,.4); }
 
   /* ---------- pause / stars / rival / countdown colour ---------- */
-  #pauseBtn{ position:absolute; top:calc(env(safe-area-inset-top,10px) + 66px); left:16px; pointer-events:auto; display:none;
-             width:42px; height:42px; border-radius:12px; align-items:center; justify-content:center; font-size:13px; letter-spacing:1px; font-weight:900; color:#fff;
-             background:linear-gradient(160deg,rgba(32,17,46,.6),rgba(12,7,20,.55)); border:1px solid rgba(255,255,255,.14);
-             -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px); cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,.4); }
-  #pauseBtn.show{ display:flex; }
+  #pauseBtn{ position:absolute; top:env(safe-area-inset-top,10px); left:14px; pointer-events:auto; display:none;
+             width:46px; height:46px; border-radius:13px; align-items:center; justify-content:center; font-size:16px; letter-spacing:1px; font-weight:900; color:#fff;
+             background:linear-gradient(160deg,rgba(255,120,50,.34),rgba(20,12,28,.6)); border:1.5px solid rgba(255,255,255,.30);
+             -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px); cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,.45); }
+  body.touch #pauseBtn.show{ display:flex; }       /* touch only — desktop pauses with Esc */
+  body.touch #pauseBtn{ width:48px; height:48px; font-size:17px; }
   #pauseRow{ display:flex; gap:12px; margin-top:14px; }
   #rivalTag{ position:absolute; top:calc(env(safe-area-inset-top,10px) + 116px); left:50%; transform:translateX(-50%);
              font-size:min(3.4vw,13px); font-weight:800; letter-spacing:1px; color:#ff9a7c; background:rgba(20,8,16,.55);
@@ -189,6 +190,7 @@
   /* ---------- touch controls ---------- */
   #touch{ position:fixed; inset:0; z-index:8; pointer-events:none; display:none; }
   body.touch #touch{ display:block; }
+  body.touch.inmenu #touch{ display:none; }      /* hide driving controls while in the garage/menu */
   .pad{ position:fixed; bottom:calc(env(safe-area-inset-bottom,14px) + 14px); pointer-events:auto;
         display:flex; gap:14px; }
   #joy{ left:calc(env(safe-area-inset-left,0px) + 16px); }
@@ -223,15 +225,21 @@
   #btn-boost{ grid-column:2; grid-row:1; background:rgba(255,150,40,.45); border-color:rgba(255,210,150,.7); }
   #btn-boost.on{ background:rgba(255,170,60,.9); }
 
-  /* mobile HUD: shrink the big readouts so they don't dominate a small phone screen */
-  body.touch #speedBox{ transform:translateX(-50%) scale(.82); transform-origin:bottom center; }
-  body.touch #mapBox{ transform:scale(.84); transform-origin:top right; }
+  /* mobile HUD: compact speed readout hugging the bottom edge (out of the center sightline) + smaller map */
+  body.touch #speedBox{ width:auto; height:auto; bottom:calc(env(safe-area-inset-bottom,6px) + 2px); transform:translateX(-50%); text-align:center; }
+  body.touch #speedo{ display:none; }                                  /* drop the big circular gauge on phones */
+  body.touch #speedNum{ position:static; transform:none; font-size:26px; }
+  body.touch #speedUnit{ position:static; top:auto; font-size:8px; letter-spacing:2px; margin-top:-2px; }
+  body.touch #boostWrap{ position:static; left:auto; right:auto; bottom:auto; width:140px; height:7px; margin:4px auto 0; }
+  body.touch #boostWrap::after{ top:-12px; }
+  body.touch #mapBox{ transform:scale(.8); transform-origin:top right; }
+  body.touch #lapBox{ left:66px; }                                     /* clear the corner pause button */
   body.touch #lapBox .lap{ font-size:18px; }
   body.touch #lapBox .time{ font-size:15px; }
   body.touch #posBox{ padding:6px 18px; }
   body.touch #posBox .p{ font-size:26px; }
   body.touch #scoreBox{ font-size:18px; top:calc(env(safe-area-inset-top,10px) + 52px); }
-  body.touch #rivalTag{ top:calc(env(safe-area-inset-top,10px) + 102px); }
+  body.touch #rivalTag{ top:calc(env(safe-area-inset-top,10px) + 100px); }
 
   /* rotate hint */
   #rotate{ position:fixed; inset:0; z-index:20; display:none; flex-direction:column; gap:18px;
@@ -241,6 +249,36 @@
   body.touch.portrait #rotate{ display:flex; }
 
   .credit{ position:fixed; bottom:8px; left:50%; transform:translateX(-50%); font-size:11px; opacity:.5; z-index:11; }
+
+  /* LANDSCAPE PHONE: pack the menu so RACE/CUP always fit on a short screen (they were off-screen below the fold) */
+  @media (max-height:440px){
+    #menu{ justify-content:flex-start; padding:7px 12px 12px; gap:3px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+    .menuBot{ flex:0 0 auto; }
+    .title{ font-size:30px; line-height:.92; }
+    .title br{ display:none; }
+    .sub{ margin-top:2px; font-size:9px; letter-spacing:2px; }
+    .sub::before,.sub::after{ width:14px; margin:0 7px; }
+    #trackPick{ margin-top:6px; gap:6px; }
+    .trackBtn{ padding:4px 8px 3px; min-width:74px; }
+    .trackBtn .ic{ font-size:14px; margin-bottom:0; }
+    .trackBtn b{ font-size:10px; }
+    .trackBtn span{ font-size:8px; margin-top:1px; }
+    .trackBtn .dots{ margin-top:3px; } .trackBtn .dots i{ width:4px; height:4px; }
+    .cstars{ margin-top:2px; font-size:8px; }
+    .menuBot{ gap:3px; margin-top:3px; }
+    #carName{ font-size:15px; }
+    #carStats{ margin-top:2px; gap:2px; } .stat .bar{ height:5px; } .stat label{ font-size:9px; }
+    #carStatus{ margin-top:2px; font-size:11px; min-height:0; }
+    .carArrow{ width:34px; height:34px; font-size:13px; }
+    #settings{ padding:4px 9px; margin-top:1px; }
+    #togRow{ gap:6px; } .tog{ padding:4px 10px; font-size:10px; }
+    #sndRow{ margin-top:4px; gap:7px; } #volSlider,#musSlider{ width:min(24vw,100px); }
+    #ctaRow{ gap:8px; }
+    .cta{ font-size:19px; padding:7px 28px; margin-top:2px; }
+    .cta.champ{ font-size:13px; padding:7px 13px; }
+    .keys{ display:none; }
+    #coinBadge{ font-size:14px; padding:5px 11px; top:8px; right:10px; }
+  }
 </style>
 </head>
 <body>
@@ -277,9 +315,9 @@
   <div id="coinBadge">🪙 0</div>
   <div class="menuTop">
     <div class="title">SUNSET<br>DRIFT</div>
-    <div class="sub">NEON CITY · STREET CIRCUIT</div>
+    <div class="sub">DOWNTOWN · GOLDEN HOUR</div>
     <div id="trackPick">
-      <div class="trackBtn sel" data-i="0"><div class="ic">🌆</div><b>DOWNTOWN</b><span>Neon City</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
+      <div class="trackBtn sel" data-i="0"><div class="ic">🌇</div><b>GOLDEN MILE</b><span>Golden Hour</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
       <div class="trackBtn" data-i="1"><div class="ic">🌅</div><b>OCEAN DRIVE</b><span>Sunset Coast</span><div class="dots"><i class="on"></i><i></i><i></i></div></div>
       <div class="trackBtn" data-i="2"><div class="ic">🏗️</div><b>THE DOCKS</b><span>Industrial</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
       <div class="trackBtn" data-i="3"><div class="ic">🏜️</div><b>DESERT RUN</b><span>Red Canyon</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
@@ -309,7 +347,7 @@
         <div class="tog" id="muteBtn">🔊</div>
         <input id="volSlider" type="range" min="0" max="100" value="55" aria-label="sfx volume">
         <div class="tog" id="musMuteBtn">🎵</div>
-        <input id="musSlider" type="range" min="0" max="100" value="40" aria-label="music volume">
+        <input id="musSlider" type="range" min="0" max="100" value="20" aria-label="music volume">
       </div>
     </div>
     <div id="ctaRow"><div class="cta" id="startBtn">▶&nbsp; RACE</div><div class="cta cta2 champ" id="champBtn">🏆&nbsp; CUP</div></div>
@@ -342,7 +380,7 @@
 <div id="pauseMenu" class="overlay hidden">
   <div class="title" style="font-size:min(11vw,62px)">PAUSED</div>
   <div class="cta" id="resumeBtn">▶&nbsp; RESUME</div>
-  <div id="pauseRow"><div class="cta cta2" id="pRestartBtn">↻ RESTART</div><div class="cta cta2" id="pGarageBtn">🏠 GARAGE</div></div>
+  <div id="pauseRow"><div class="cta cta2" id="pRestartBtn">↻ RESTART</div><div class="cta cta2" id="pGarageBtn">🏠 MAIN MENU</div></div>
 </div>
 
 <!-- rotate hint -->
@@ -478,7 +516,7 @@ let WORLD=null, currentTrack=0, currentTheme=null;                 // selectable
 let terrainNoise=null, terrainAmp=0, terrainBiome='flat';         // procedural terrain (elevated nature themes)
 const TERRAIN={ coast:{amp:15,biome:'coast'}, desert:{amp:44,biome:'desert'}, forest:{amp:66,biome:'forest'} };
 const TRACKS=[
-  { name:'DOWNTOWN', sub:'NEON CITY · STREET CIRCUIT', theme:'city', groundHex:'#33363d', fog:0xe6885f,
+  { name:'GOLDEN MILE', sub:'DOWNTOWN · GOLDEN HOUR', theme:'city', groundHex:'#33363d', fog:0xe6885f,
     sky:{top:0x3a2160,bot:0xff9a5a,sun:0xfff2c0}, sun:[-0.5,0.12,-0.85],
     ctrl:[[-185,-125],[40,-125],[78,-150],[128,-150],[162,-120],[185,-55],[185,92],[120,135],[150,178],[15,170],[-115,160],[-185,88],[-185,-28]] },
   { name:'OCEAN DRIVE', sub:'SUNSET COAST · PALM SWEEP', theme:'coast', groundHex:'#cdab6e', fog:0xffc890,
@@ -549,7 +587,7 @@ const MUSIC={
   desert:'https://storage.googleapis.com/oneilbeats-media/beats/1779375765913_Tormenta_en_la_Pista-TAGGED.mp3',
   forest:'https://storage.googleapis.com/oneilbeats-media/beats/1778911511289_My_Candlelight-TAGGED.mp3',
 };
-let musicVolume=0.4, musicMuted=false, bgMusic=null, musicTheme=null;
+let musicVolume=0.2, musicMuted=false, bgMusic=null, musicTheme=null;   // background music sits under the engine/SFX
 function applyMusicVol(){ if(bgMusic) bgMusic.volume = musicMuted?0:musicVolume; }
 function playMusic(theme){
   if(!MUSIC[theme]) return;
@@ -1918,6 +1956,7 @@ function startGame(){
   const m=carMul(selectedCar); player.spdMul=m.spd; player.gripMul=m.grip;  // chosen car's handling
   bestLap=null; raceTime=0; countdown=3.0; goTimer=0; lastFlash=-1; lastBeepN=99; state='countdown';
   lapTimes=[]; player._perfectArmed=false; player._autoLaunch=Math.random()<0.6; assignRival();   // per-race state
+  document.body.classList.remove('inmenu');
   elMenu.classList.add('hidden'); elResults.classList.add('hidden');
   document.getElementById('pauseBtn').classList.add('show'); document.getElementById('pauseMenu').classList.add('hidden');
   skidPool.forEach(m=>m.visible=false);
@@ -1930,7 +1969,7 @@ function hidePauseUI(){ const pb=document.getElementById('pauseBtn'); if(pb) pb.
 function pauseGame(){ if(state!=='race') return; state='paused'; document.getElementById('pauseMenu').classList.remove('hidden'); if(audio&&audio.ok) audio.update(0,0,false); }
 function resumeGame(){ if(state!=='paused') return; document.getElementById('pauseMenu').classList.add('hidden'); state='race'; }
 function showMenu(){                                       // back to the garage/menu (shop)
-  state='menu'; menuT=0; champ.active=false; hidePauseUI();
+  state='menu'; menuT=0; champ.active=false; hidePauseUI(); document.body.classList.add('inmenu');
   elResults.classList.add('hidden'); document.getElementById('champ').classList.add('hidden'); elMenu.classList.remove('hidden');
   const sb=document.getElementById('scoreBox'); if(sb) sb.style.display='none';   // clear race HUD leftovers
   document.getElementById('rivalTag').classList.add('hidden');
@@ -2234,6 +2273,7 @@ function selectTrack(idx){
 }
 function init(){
   if(showTouch) document.body.classList.add('touch');
+  document.body.classList.add('inmenu');                  // start on the menu -> driving controls hidden until RACE
   document.getElementById('lapTot').textContent=CONFIG.laps;
   if(isTouch) document.getElementById('keysHint').innerHTML=
     'Steer with the <b>joystick</b> &nbsp;•&nbsp; <b>GAS</b> / <b>BRAKE</b><br><b>DRIFT</b> round corners &nbsp;•&nbsp; <b>BOOST</b> for speed';
