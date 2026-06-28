@@ -857,9 +857,9 @@ function buildPickups(){
 function resetPickups(){ if(coinList) coinList.forEach(c=>c.alive=true); coinSpin=0; coinGrab=0;
   boostPads.forEach(p=>p.hit=0); }
 function updateArcadeVisuals(dt){
-  if(coinMesh){ coinSpin+=dt*2.4;
+  if(coinMesh){ coinSpin+=dt*2.4; _Q.setFromAxisAngle(_UP, coinSpin);   // one rotation for all coins this frame
     for(let i=0;i<coinList.length;i++){ const co=coinList[i];
-      if(co.alive){ _Q.setFromAxisAngle(_UP, coinSpin); _P.set(co.x, 1.15+(sampleElev[co.idx]||0), co.z); _M4.compose(_P,_Q,_S); }
+      if(co.alive){ _P.set(co.x, 1.15+(sampleElev[co.idx]||0), co.z); _M4.compose(_P,_Q,_S); }
       else _M4.compose(_FAR,_Q,_S);
       coinMesh.setMatrixAt(i,_M4); }
     coinMesh.instanceMatrix.needsUpdate=true; }
@@ -1584,6 +1584,7 @@ function placeGrid(){
     c.heading=Math.atan2(t.x,t.y);
     c.vel.set(0,0); c.boost=CONFIG.boostMax; c.trackIdx=idx; c.halfPassed=false;
     c.lap=0; c.lapStart=0; c.finished=false; c.boosting=false; c.wasBoost=false; c.drifting=false; c._lastRank=0; c._padBoost=0;
+    c._nmT=-9; c._rivAhead=undefined;                      // reset near-miss timestamp + rival side so they work on race 2+
     if(!c.isPlayer){ c.aiBase=0.965+((i*0.0185)%0.07); c.aiMiss=0.05+((i*7)%4)*0.02; }   // per-AI skill: varied pace + occasional missed brake
     syncCarMesh(c);
   }
@@ -1831,7 +1832,8 @@ const elLapNow=document.getElementById('lapNow'), elCurTime=document.getElementB
   elBestTime=document.getElementById('bestTime'), elPosNow=document.getElementById('posNow'),
   elPosOf=document.getElementById('posOf'), elSpeedNum=document.getElementById('speedNum'),
   elBoostBar=document.getElementById('boostBar'), elBoostWrap=document.getElementById('boostWrap'),
-  elScore=document.getElementById('scoreBox');
+  elScore=document.getElementById('scoreBox'), elRival=document.getElementById('rivalTag');
+let _rivalTxt='', _scoreTxt='';                                  // cache HUD strings -> skip per-frame re-parse
 function fmt(t){ if(t==null) return '--'; const m=Math.floor(t/60), s=(t%60); return m+':'+(s<10?'0':'')+s.toFixed(1); }
 function ordinal(n){ return n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th'); }
 function rankOf(c){ let r=1; const pc=c.lap*SAMPLES+c.trackIdx;
@@ -1863,22 +1865,25 @@ function updateHUD(){
   if(player._lastRank && r<player._lastRank && state==='race'){ combo++; addScore(80,'OVERTAKE','#ffd23b'); }   // gained a place
   player._lastRank=r;
   if(elScore){ if(runScore>0){ elScore.style.display='block';
-      elScore.innerHTML=Math.round(runScore).toLocaleString()+(combo>1?' <span class="cx">x'+combo+'</span>':''); }
+      const txt=Math.round(runScore).toLocaleString()+(combo>1?' <span class="cx">x'+combo+'</span>':'');
+      if(txt!==_scoreTxt){ elScore.innerHTML=txt; _scoreTxt=txt; } }
     else elScore.style.display='none'; }
   const kmh=Math.round(Math.abs(player.vel.dot(_r.set(Math.sin(player.heading),Math.cos(player.heading))))*3.1);
   elSpeedNum.textContent=kmh; drawSpeedo(kmh, 250);
   elBoostBar.style.width=(player.boost)+'%';
   elBoostWrap.classList.toggle('charging', player.drifting && !player.boosting);
   // rival tag + pass callouts
-  const rt=document.getElementById('rivalTag'), rv=cars[rivalIdx];
-  if(rt && rv && state==='race'){
+  const rv=cars[rivalIdx];
+  if(elRival && rv && state==='race'){
     const gapS=(player.lap*SAMPLES+player.trackIdx)-(rv.lap*SAMPLES+rv.trackIdx), name=RACER_NAMES[rivalIdx]||'RIVAL';
-    rt.classList.remove('hidden'); rt.innerHTML='⚔ '+name+'&nbsp; '+(gapS>=0?'+':'−')+(Math.abs(gapS)/28).toFixed(1)+'s';
+    elRival.classList.remove('hidden');
+    const txt='⚔ '+name+'  '+(gapS>=0?'+':'−')+(Math.abs(gapS)/28).toFixed(1)+'s';
+    if(txt!==_rivalTxt){ elRival.textContent=txt; _rivalTxt=txt; }
     const rivAhead=gapS<0;
     if(player._rivAhead!==undefined && player._rivAhead!==rivAhead && Math.abs(gapS)<SAMPLES*0.5)
       popup(rivAhead?(name+' STRIKES BACK'):('TAKE THAT, '+name+'!'), rivAhead?'#ff7a6c':'#ffd23b');
     player._rivAhead=rivAhead;
-  } else if(rt) rt.classList.add('hidden');
+  } else if(elRival) elRival.classList.add('hidden');
   drawMap();
 }
 
@@ -1913,6 +1918,8 @@ function resumeGame(){ if(state!=='paused') return; document.getElementById('pau
 function showMenu(){                                       // back to the garage/menu (shop)
   state='menu'; menuT=0; champ.active=false; hidePauseUI();
   elResults.classList.add('hidden'); document.getElementById('champ').classList.add('hidden'); elMenu.classList.remove('hidden');
+  const sb=document.getElementById('scoreBox'); if(sb) sb.style.display='none';   // clear race HUD leftovers
+  document.getElementById('rivalTag').classList.add('hidden');
   placeGrid(); renderCoins(); renderShop(); renderTrackStars();   // reset car to the grid + refresh coins/unlock/stars
 }
 function startChampionship(){
@@ -1950,7 +1957,8 @@ function finishRace(){
   document.getElementById('resTitle').textContent = won?'🏆 YOU WIN!':(r<=2?'PODIUM!':'FINISH!');
   document.getElementById('resPos').innerHTML = medal+ordinal(r);
   document.getElementById('resStats').innerHTML =
-    lapSplitsHTML() + 'Total <b>'+fmt(raceTime)+'</b> &nbsp;·&nbsp; Best <b>'+fmt(bestLap)+'</b>';
+    lapSplitsHTML() + 'Total <b>'+fmt(raceTime)+'</b> &nbsp;·&nbsp; Best <b>'+fmt(bestLap)+'</b>'
+    + (coinGrab>0?'<br><span style="font-size:.82em;opacity:.85">🪙 '+coinGrab+' collected on track</span>':'');
   renderStars(stars);
   animateCount(document.getElementById('resReward'), reward, '+', ' 🪙'+(runScore>0?'   ·   '+Math.round(runScore).toLocaleString()+' pts':''));
   const nextIdx=(currentTrack+1)%TRACKS.length;
@@ -2003,7 +2011,7 @@ function update(dt){
     updateCamera(dt); updateHUD();
   } else if(state==='menu'){                                   // car showcase: slow orbit around the selected car
     menuT += dt;
-    for(let i=1;i<cars.length;i++) cars[i].rig.group.visible=false;   // only the player's car on display
+    for(let i=1;i<cars.length;i++){ cars[i].rig.group.visible=false; if(cars[i].shadowMesh) cars[i].shadowMesh.visible=false; }   // only the player's car (+ its shadow) on display
     player.rig.group.visible=true; syncCarMesh(player);
     const cx=player.pos.x, cz=player.pos.y, ang=menuT*0.32, cy=player.visY||0;
     camera.position.set(cx + Math.sin(ang)*8.2, 2.5+cy, cz + Math.cos(ang)*8.2);
