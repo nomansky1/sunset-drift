@@ -354,6 +354,17 @@ const CONFIG = {
 let scene, camera, renderer, clock;
 let cars = [], player;
 let samplePts = [], sampleTan = [], sampleNorm = [], sampleCum = [];
+let sampleElev = [], roadAmp = 0;        // road centerline elevation profile (3D climbing roads on terrain themes)
+function computeRoadElev(){
+  sampleElev = new Array(SAMPLES).fill(0);
+  roadAmp = (terrainAmp<=0 || !terrainNoise) ? 0 : clamp(terrainAmp*0.8, 18, 44);
+  if(!roadAmp) return;
+  const raw=samplePts.map(p=> terrainNoise(p.x*0.006+50, p.y*0.006+50));   // base noise along the centerline
+  const R=14;                                                              // smooth -> a gentle ribbon, not jagged
+  for(let i=0;i<SAMPLES;i++){ let s=0; for(let k=-R;k<=R;k++) s+=raw[((i+k)%SAMPLES+SAMPLES)%SAMPLES];
+    sampleElev[i]=((s/(2*R+1))-0.42)*roadAmp; }
+}
+function roadElevAt(idx){ return sampleElev.length? (sampleElev[((idx%SAMPLES)+SAMPLES)%SAMPLES]||0) : 0; }
 const SAMPLES = 600;
 let trackCentroid = new THREE.Vector2();
 let trackRadius = 200;
@@ -614,9 +625,9 @@ function buildRibbon(halfW, y, color, roughness, tex, vScale, metalness, materia
   const pos=[], idx=[], uv=[]; let cum=0;
   for(let i=0;i<=SAMPLES;i++){ const j=i%SAMPLES; const p=samplePts[j], n=sampleNorm[j];
     if(i>0) cum += samplePts[j].distanceTo(samplePts[(i-1+SAMPLES)%SAMPLES]);
-    const v=cum*(vScale||0.05);
-    pos.push(p.x+n.x*halfW, y, p.y+n.y*halfW); uv.push(0, v);
-    pos.push(p.x-n.x*halfW, y, p.y-n.y*halfW); uv.push(1, v); }
+    const v=cum*(vScale||0.05), ey=y+(sampleElev[j]||0);   // road rides the elevation profile
+    pos.push(p.x+n.x*halfW, ey, p.y+n.y*halfW); uv.push(0, v);
+    pos.push(p.x-n.x*halfW, ey, p.y-n.y*halfW); uv.push(1, v); }
   for(let i=0;i<SAMPLES;i++){ const a=i*2; idx.push(a,a+1,a+2, a+1,a+3,a+2); }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
@@ -706,7 +717,7 @@ function buildGate(i, finish){
     mat=new THREE.MeshStandardMaterial({color:0x39c0ff, emissive:0x39c0ff, emissiveIntensity:1.1, transparent:true, opacity:0.85, roughness:.5}); depth=0.9;
   }
   const geo=new THREE.PlaneGeometry(hw*2, depth); geo.rotateX(-Math.PI/2);   // lie flat on the road
-  const m=new THREE.Mesh(geo, mat); m.position.set(p.x, 0.085, p.y); m.rotation.y=ang; scene.add(m);
+  const m=new THREE.Mesh(geo, mat); m.position.set(p.x, 0.085+(sampleElev[i]||0), p.y); m.rotation.y=ang; scene.add(m);
 }
 
 /* =========================================================================
@@ -787,9 +798,10 @@ function terrainHeight(x,z){
   if(terrainAmp<=0 || !terrainNoise) return 0;
   let h=(terrainNoise(x*0.006+50, z*0.006+50)-0.42)*2.4*terrainAmp;
   if(h<0) h*=0.4;                                        // shallower valleys
-  const d=distToTrackApprox(x,z);
+  let best=0,bd=Infinity; for(let i=0;i<SAMPLES;i+=4){ const p=samplePts[i]; const dx=p.x-x,dz=p.y-z,dd=dx*dx+dz*dz; if(dd<bd){bd=dd;best=i;} }
+  const d=Math.sqrt(bd), re=sampleElev[best]||0;          // road elevation at the nearest centerline point
   const blend=clamp((d-(CONFIG.roadHalfWidth+8))/42, 0, 1);
-  return h*blend - 0.12*(1-blend);                       // slightly recess the corridor below the road (kills z-fight without a hovering ledge)
+  return h*blend + (re-0.12)*(1-blend);                   // corridor rides the climbing road; terrain ramps up to the hills beside it
 }
 function biomeColor(h, col){
   const f=clamp(h/(terrainAmp*1.3||1), -0.3, 1);          // altitude bands -> colour
@@ -1407,7 +1419,9 @@ function placeGrid(){
 }
 
 function syncCarMesh(c){
-  c.rig.group.position.set(c.pos.x, 0.06, c.pos.y);
+  const re=roadElevAt(c.trackIdx);
+  c.visY = (c.visY===undefined) ? re : c.visY+(re-c.visY)*0.2;   // smooth ride up/down the climbing road
+  c.rig.group.position.set(c.pos.x, 0.06+c.visY, c.pos.y);
   c.rig.group.rotation.y=c.heading;
 }
 
@@ -1501,21 +1515,22 @@ function updateCar(c, inp, dt){
   const burnout = inp.throttle && spd>2.5 && spd<8 && c._stopT>0;   // wheelspin only while pulling AWAY from a stop (not wedged at ~0)
   const screech = (c.drifting && slip>1.6) || hardBrake || burnout;
   const rx=c.pos.x-Math.sin(c.heading)*1.6, rz=c.pos.y-Math.cos(c.heading)*1.6;
+  const ey=c.visY||0;                                            // ground effects ride the road elevation
   if(screech || offT || c.boosting){
     c.skidTimer-=dt;
     if(screech || offT){
       const intensity = offT?1 : clamp(slip/3 + (hardBrake?0.6:0) + (burnout?0.7:0), 0.4, 1.6);
       for(let s=-1;s<=1;s+=2){ const wx=rx+Math.cos(c.heading)*0.85*s, wz=rz-(-Math.sin(c.heading))*0.85*s;
-        if(offT) dust.emit(wx,0.35,wz,(Math.random()-.5)*2,1.3+Math.random(),(Math.random()-.5)*2, 0.55, 12+Math.random()*8);
-        else if(s>0 || Math.random()<0.6) tireSmoke.emit(wx,0.3,wz,(Math.random()-.5)*1.5, 1.1+Math.random()*0.8, (Math.random()-.5)*1.5, 0.32+intensity*0.08, 6+intensity*3+Math.random()*4);
+        if(offT) dust.emit(wx,0.35+ey,wz,(Math.random()-.5)*2,1.3+Math.random(),(Math.random()-.5)*2, 0.55, 12+Math.random()*8);
+        else if(s>0 || Math.random()<0.6) tireSmoke.emit(wx,0.3+ey,wz,(Math.random()-.5)*1.5, 1.1+Math.random()*0.8, (Math.random()-.5)*1.5, 0.32+intensity*0.08, 6+intensity*3+Math.random()*4);
       }
-      if(c.skidTimer<=0 && skidPool.length){ dropSkid(rx,rz,c.heading); c.skidTimer=0.022; }
+      if(c.skidTimer<=0 && skidPool.length){ dropSkid(rx,rz,c.heading,ey); c.skidTimer=0.022; }
     }
     if(c.boosting){                                               // thin spark trail out the exhaust (not a cloud)
       const fwx=Math.sin(c.heading), fwz=Math.cos(c.heading), rix=Math.cos(c.heading), riz=-Math.sin(c.heading);
       const bx2=c.pos.x-fwx*2.25, bz2=c.pos.y-fwz*2.25;           // rear of the car
       for(let s=-1;s<=1;s+=2){ const exx=bx2+rix*0.45*s, ezz=bz2+riz*0.45*s;
-        sparks.emit(exx,0.55,ezz, -fwx*13+(Math.random()-.5)*1.5, 0.25+Math.random()*0.5, -fwz*13+(Math.random()-.5)*1.5, 0.20, 2.5+Math.random()*2.5); }
+        sparks.emit(exx,0.55+ey,ezz, -fwx*13+(Math.random()-.5)*1.5, 0.25+Math.random()*0.5, -fwz*13+(Math.random()-.5)*1.5, 0.20, 2.5+Math.random()*2.5); }
     }
   }
   if(c.rig.flames){                                               // flicker the twin exhaust flares while boosting
@@ -1524,8 +1539,8 @@ function updateCar(c, inp, dt){
   }
 }
 
-function dropSkid(x,z,ang){ for(let s=-1;s<=1;s+=2){ const m=skidPool[skidCursor]; skidCursor=(skidCursor+1)%skidPool.length;
-  m.position.set(x+Math.cos(ang)*0.7*s, 0.075, z-(-Math.sin(ang))*0.7*s); m.rotation.y=ang; m.visible=true; } }
+function dropSkid(x,z,ang,ey){ ey=ey||0; for(let s=-1;s<=1;s+=2){ const m=skidPool[skidCursor]; skidCursor=(skidCursor+1)%skidPool.length;
+  m.position.set(x+Math.cos(ang)*0.7*s, 0.075+ey, z-(-Math.sin(ang))*0.7*s); m.rotation.y=ang; m.visible=true; } }
 
 function updateProgress(c, prev){
   const S=SAMPLES, idx=c.trackIdx;
@@ -1574,10 +1589,11 @@ function updateCamera(dt){
   const c=player; _f.set(Math.sin(c.heading), Math.cos(c.heading));
   const amt=(c.boosting?0.5:0)+camShake; camShake=Math.max(0,camShake-dt*3);
   const sx=amt?(Math.random()-.5)*amt:0, sz=amt?(Math.random()-.5)*amt:0;
-  _cd.set(c.pos.x - _f.x*CONFIG.camDist + sx, CONFIG.camHeight + (c.boosting?-0.4:0), c.pos.y - _f.y*CONFIG.camDist + sz);
+  const cy=c.visY||0;                                          // follow the road elevation
+  _cd.set(c.pos.x - _f.x*CONFIG.camDist + sx, CONFIG.camHeight + cy + (c.boosting?-0.4:0), c.pos.y - _f.y*CONFIG.camDist + sz);
   const k=1-Math.exp(-CONFIG.camLerp*dt);
   camera.position.lerp(_cd, k);
-  _cl.set(c.pos.x + _f.x*CONFIG.camLookAhead, 1.2, c.pos.y + _f.y*CONFIG.camLookAhead);
+  _cl.set(c.pos.x + _f.x*CONFIG.camLookAhead, 1.2+cy, c.pos.y + _f.y*CONFIG.camLookAhead);
   camera.lookAt(_cl);
   const targetFov=(c.boosting?CONFIG.fovBoost:CONFIG.fovBase) + Math.min(player.vel.length()/CONFIG.topSpeed,1)*9;
   camera.fov=lerp(camera.fov,targetFov,0.08); camera.updateProjectionMatrix();
@@ -1748,9 +1764,9 @@ function update(dt){
     menuT += dt;
     for(let i=1;i<cars.length;i++) cars[i].rig.group.visible=false;   // only the player's car on display
     player.rig.group.visible=true; syncCarMesh(player);
-    const cx=player.pos.x, cz=player.pos.y, ang=menuT*0.32;
-    camera.position.set(cx + Math.sin(ang)*8.2, 2.5, cz + Math.cos(ang)*8.2);
-    camera.lookAt(cx, 1.05, cz);
+    const cx=player.pos.x, cz=player.pos.y, ang=menuT*0.32, cy=player.visY||0;
+    camera.position.set(cx + Math.sin(ang)*8.2, 2.5+cy, cz + Math.cos(ang)*8.2);
+    camera.lookAt(cx, 1.05+cy, cz);
   }
   dust.update(dt); sparks.update(dt); tireSmoke.update(dt);
 }
@@ -1894,6 +1910,7 @@ function buildWorld(idx){
   scene.add=function(o){ WORLD.add(o); return scene; };          // route world builders into WORLD
   try{
     buildTrackTables(currentTheme.ctrl);
+    computeRoadElev();                                            // road climbs the terrain (must precede terrain/mesh)
     buildLights(buildSky());                                      // buildSky sets sunDirV + returns sunDir
     buildTerrain(); buildTrackMeshes(); scatterProps();
   } finally { delete scene.add; }                                // restore the real Object3D.add
