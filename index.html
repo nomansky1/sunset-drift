@@ -1017,8 +1017,12 @@ function terrainHeight(x,z){
   if(terrainAmp<=0 || !terrainNoise) return 0;
   let h=(terrainNoise(x*0.006+50, z*0.006+50)-0.42)*2.4*terrainAmp;
   if(h<0) h*=0.4;                                        // shallower valleys
-  let best=0,bd=Infinity; for(let i=0;i<SAMPLES;i+=2){ const p=samplePts[i]; const dx=p.x-x,dz=p.y-z,dd=dx*dx+dz*dz; if(dd<bd){bd=dd;best=i;} }
-  const d=Math.sqrt(bd), re=roadElevExact(x,z,best);      // interpolated road elevation (matches the ribbon -> no shoulder seam)
+  // distance-WEIGHTED road elevation over nearby samples (not a hard nearest pick) -> no terrain seam where the road folds back on itself
+  let bd=Infinity, wsum=0, wre=0;
+  for(let i=0;i<SAMPLES;i+=3){ const p=samplePts[i]; const dx=p.x-x,dz=p.y-z,dd=dx*dx+dz*dz;
+    if(dd<bd) bd=dd;
+    if(dd<5625){ const w=1/(dd+30); wsum+=w; wre+=w*(sampleElev[i]||0); } }   // <75u inverse-square -> smooth field (no Voronoi seam)
+  const d=Math.sqrt(bd), re=wsum>0?wre/wsum:0;
   const blend=clamp((d-(CONFIG.roadHalfWidth+8))/42, 0, 1);
   return h*blend + (re-0.12)*(1-blend);                   // corridor rides the climbing road; terrain ramps up to the hills beside it
 }
@@ -1266,7 +1270,7 @@ function buildDesert(rng){
   for(let k=0;k<32;k++){ const a=rng()*6.283, rad=trackRadius+25+rng()*270, x=trackCentroid.x+Math.cos(a)*rad, z=trackCentroid.y+Math.sin(a)*rad;
     if(distToTrackApprox(x,z)<24) continue; rocks.push({x,z,h:12+rng()*34,r:7+rng()*13,ry:rng()*6}); }
   if(propsReady && propModels.desertrock){                   // real CC0 red-rock formations
-    instProp(propModels.desertrock, rocks.map(b=> propMat(b.x,b.z, b.r*1.5, b.ry, -0.5)));
+    instProp(propModels.desertrock, rocks.map(b=> propMat(b.x,b.z, b.r*1.5, b.ry, -0.5, true)));   // tilt to slope
   } else {
     const rgeo=new THREE.ConeGeometry(1,1,6,1); rgeo.translate(0,0.5,0);
     const rmesh=new THREE.InstancedMesh(rgeo, new THREE.MeshStandardMaterial({color:0xb0603a,flatShading:true,roughness:1}), rocks.length);
@@ -1321,7 +1325,7 @@ function buildForest(rng){
   }
   const rrocks=[]; for(let k=0;k<16;k++){ const a=rng()*6.283, rad=trackRadius+18+rng()*200, x=trackCentroid.x+Math.cos(a)*rad, z=trackCentroid.y+Math.sin(a)*rad; if(distToTrackApprox(x,z)<18) continue; rrocks.push({x,z,r:2.5+rng()*4}); }
   if(propsReady && propModels.rock){                         // Kenney flat mossy rocks on the forest floor
-    instProp(propModels.rock, rrocks.map(b=> propMat(b.x,b.z, b.r*1.6, rng()*6.283, 0)));
+    instProp(propModels.rock, rrocks.map(b=> propMat(b.x,b.z, b.r*1.6, rng()*6.283, 0, true)));   // tilt to slope
   } else {
     const bmesh=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0), new THREE.MeshStandardMaterial({color:0x6a6a64,flatShading:true,roughness:1}), rrocks.length);
     rrocks.forEach((b,k)=>{ _m.compose(pv.set(b.x,terrainHeight(b.x,b.z)+b.r*0.4,b.z), q, sv.set(b.r,b.r*0.8,b.r)); bmesh.setMatrixAt(k,_m); });
@@ -1614,9 +1618,15 @@ function loadPropModels(){
     catch(e){ done(); }
   });
 }
-const _pm=new THREE.Matrix4(), _pmT=new THREE.Matrix4(), _pq=new THREE.Quaternion(), _pp=new THREE.Vector3(), _ps=new THREE.Vector3(), _PY=new THREE.Vector3(0,1,0);
-function propMat(x,z,scale,rotY,yOff){  // transform that drops a normalized prop onto the terrain
-  _pq.setFromAxisAngle(_PY, rotY||0); _pp.set(x, terrainHeight(x,z)+(yOff||0), z); _ps.set(scale,scale,scale);
+const _pm=new THREE.Matrix4(), _pmT=new THREE.Matrix4(), _pq=new THREE.Quaternion(), _pqt=new THREE.Quaternion(), _pn=new THREE.Vector3(), _pp=new THREE.Vector3(), _ps=new THREE.Vector3(), _PY=new THREE.Vector3(0,1,0);
+function propMat(x,z,scale,rotY,yOff,tilt){  // transform that drops a normalized prop onto the terrain
+  _pq.setFromAxisAngle(_PY, rotY||0);
+  if(tilt && terrainAmp>0){                                   // lean big rocks/mesas to the slope so they sit flush (no float/bury)
+    const e=Math.max(1.5, scale*0.35);
+    const hX=terrainHeight(x+e,z)-terrainHeight(x-e,z), hZ=terrainHeight(x,z+e)-terrainHeight(x,z-e);
+    _pn.set(-hX, 2*e, -hZ).normalize(); _pqt.setFromUnitVectors(_PY, _pn); _pq.premultiply(_pqt);
+  }
+  _pp.set(x, terrainHeight(x,z)+(yOff||0), z); _ps.set(scale,scale,scale);
   return _pm.compose(_pp,_pq,_ps).clone();
 }
 function instProp(parts, mats){         // one InstancedMesh per model part, sharing the transform list
@@ -1732,6 +1742,9 @@ function updateCar(c, inp, dt){
         sparks.emit(c.pos.x,0.5,c.pos.y,(Math.random()-.5)*4,1,(Math.random()-.5)*4,0.3,9);
         if(raceTime-(c._thudT||-1)>0.25){ c._thudT=raceTime; audio&&audio.thud(clamp(vOut/40,0.3,1)); }
         if(navigator.vibrate){ try{navigator.vibrate(20);}catch(e){} } }
+      if(!c.isPlayer && c.vel.length()<3){                  // un-wedge a slow AI: steer back parallel to the road + nudge forward
+        const t=sampleTan[c.trackIdx]; c.heading += angleDiff(Math.atan2(t.x,t.y), c.heading)*Math.min(1,dt*4);
+        c.vel.x += Math.sin(c.heading)*7*dt; c.vel.y += Math.cos(c.heading)*7*dt; }
     }
   }
 
@@ -1888,8 +1901,11 @@ const elLapNow=document.getElementById('lapNow'), elCurTime=document.getElementB
 let _rivalTxt='', _scoreTxt='';                                  // cache HUD strings -> skip per-frame re-parse
 function fmt(t){ if(t==null) return '--'; const m=Math.floor(t/60), s=(t%60); return m+':'+(s<10?'0':'')+s.toFixed(1); }
 function ordinal(n){ return n+(['th','st','nd','rd'][(n%100>>3^1&&n%10)||0]||'th'); }
-function rankOf(c){ let r=1; const pc=c.lap*SAMPLES+c.trackIdx;
-  cars.forEach(o=>{ if(o!==c && (o.lap*SAMPLES+o.trackIdx)>pc) r++; }); return r; }
+function prog(c){ let i=c.trackIdx;                       // monotonic progress: a post-line backward snap (idx near end, lap already ticked) counts as start-of-lap
+  if(!c.halfPassed && i>SAMPLES*0.7) i-=SAMPLES;
+  return c.lap*SAMPLES + i; }
+function rankOf(c){ let r=1; const pc=prog(c);
+  cars.forEach(o=>{ if(o!==c && prog(o)>pc) r++; }); return r; }
 let speedoCtx;
 function initSpeedo(){ const cv=document.getElementById('speedo'); if(!cv) return; const dpr=Math.min(devicePixelRatio,2);
   cv.width=148*dpr; cv.height=148*dpr; speedoCtx=cv.getContext('2d'); speedoCtx.scale(dpr,dpr); }
@@ -1914,7 +1930,7 @@ function updateHUD(){
   elBestTime.textContent='BEST '+(bestLap?fmt(bestLap):'--');
   const r=rankOf(player); elPosNow.innerHTML=r+'<span style="font-size:14px">'+ordinal(r).replace(String(r),'')+'</span>';
   elPosOf.textContent='of '+cars.length;
-  if(player._lastRank && r<player._lastRank && state==='race'){ combo++; addScore(80,'OVERTAKE','#ffd23b'); }   // gained a place
+  if(player._lastRank && r<player._lastRank && state==='race' && raceTime-(player._otT||-9)>1.0){ player._otT=raceTime; combo++; addScore(80,'OVERTAKE','#ffd23b'); }   // gained a place (debounced vs line-jitter)
   player._lastRank=r;
   if(elScore){ if(runScore>0){ elScore.style.display='block';
       const txt=Math.round(runScore).toLocaleString()+(combo>1?' <span class="cx">x'+combo+'</span>':'');
@@ -1927,7 +1943,7 @@ function updateHUD(){
   // rival tag + pass callouts
   const rv=cars[rivalIdx];
   if(elRival && rv && state==='race'){
-    const gapS=(player.lap*SAMPLES+player.trackIdx)-(rv.lap*SAMPLES+rv.trackIdx), name=RACER_NAMES[rivalIdx]||'RIVAL';
+    const gapS=prog(player)-prog(rv), name=RACER_NAMES[rivalIdx]||'RIVAL';
     elRival.classList.remove('hidden');
     const txt='⚔ '+name+'  '+(gapS>=0?'+':'−')+(Math.abs(gapS)/28).toFixed(1)+'s';
     if(txt!==_rivalTxt){ elRival.textContent=txt; _rivalTxt=txt; }
@@ -2048,7 +2064,7 @@ function update(dt){
       steer: clamp((keys.left?1:0)-(keys.right?1:0) + joyX, -1, 1), drift: keys.space, boost: keys.shift };
     updateCar(player, inp, dt);
     for(let i=1;i<cars.length;i++){ const c=cars[i];
-      const gap=(player.lap*SAMPLES+player.trackIdx-(c.lap*SAMPLES+c.trackIdx))/SAMPLES;   // + = player ahead of this AI
+      const gap=(prog(player)-prog(c))/SAMPLES;   // + = player ahead of this AI
       const band=clamp(gap*0.9, -0.05, 0.06);             // catch up when behind you, ease off when ahead (symmetric)
       c.maxScale=clamp((c.aiBase||1)+band, 0.93, c.isRival?1.06:1.04);
       updateCar(c, aiInput(c), dt); }
