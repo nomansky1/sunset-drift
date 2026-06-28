@@ -720,12 +720,14 @@ function buildGate(i, finish){
     for(let a=0;a<8;a++) for(let b=0;b<2;b++){ x.fillStyle=((a+b)%2)?'#f4f4f4':'#15151a'; x.fillRect(a*8,b*8,8,8); }
     const tex=new THREE.CanvasTexture(c); tex.magFilter=THREE.NearestFilter; tex.wrapS=THREE.RepeatWrapping; tex.repeat.set(Math.round(hw*0.7),1);
     if('encoding' in tex) tex.encoding=THREE.sRGBEncoding;
-    mat=new THREE.MeshStandardMaterial({map:tex, roughness:.7, metalness:0}); depth=2.6;
+    mat=new THREE.MeshStandardMaterial({map:tex, roughness:.7, metalness:0,
+      polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6}); depth=2.6;
   } else {
-    mat=new THREE.MeshStandardMaterial({color:0x39c0ff, emissive:0x39c0ff, emissiveIntensity:1.1, transparent:true, opacity:0.85, roughness:.5}); depth=0.9;
+    mat=new THREE.MeshStandardMaterial({color:0x39c0ff, emissive:0x39c0ff, emissiveIntensity:1.1, transparent:true, opacity:0.85, roughness:.5,
+      depthWrite:false, polygonOffset:true, polygonOffsetFactor:-6, polygonOffsetUnits:-6}); depth=0.9;
   }
   const geo=new THREE.PlaneGeometry(hw*2, depth); geo.rotateX(-Math.PI/2);   // lie flat on the road
-  const m=new THREE.Mesh(geo, mat); m.position.set(p.x, 0.085+(sampleElev[i]||0), p.y); m.rotation.y=ang; scene.add(m);
+  const m=new THREE.Mesh(geo, mat); m.position.set(p.x, 0.07+(sampleElev[i]||0), p.y); m.rotation.y=ang; scene.add(m);   // flush (polygonOffset wins the depth test)
 }
 
 /* =========================================================================
@@ -1426,10 +1428,26 @@ function placeGrid(){
   }
 }
 
+let _carShadowGeo=null, _carShadowMat=null;
+function carShadowAssets(){
+  if(_carShadowGeo) return;
+  const g=new THREE.PlaneGeometry(3.0,4.7); g.rotateX(-Math.PI/2);        // lie flat; long axis = car forward (+Z)
+  _carShadowGeo=g;
+  const c=document.createElement('canvas'); c.width=c.height=64; const x=c.getContext('2d');
+  const rg=x.createRadialGradient(32,32,2,32,32,31); rg.addColorStop(0,'rgba(0,0,0,0.55)'); rg.addColorStop(0.55,'rgba(0,0,0,0.30)'); rg.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=rg; x.fillRect(0,0,64,64);
+  _carShadowMat=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c), transparent:true, depthWrite:false,
+    polygonOffset:true, polygonOffsetFactor:-7, polygonOffsetUnits:-7});  // soft AO contact shadow, beats road + skids
+}
 function syncCarMesh(c){
   c.visY = roadElevExact(c.pos.x, c.pos.y, c.trackIdx);   // exact interpolated road height -> sits on the road at any speed
   c.rig.group.position.set(c.pos.x, 0.06+c.visY, c.pos.y);
   c.rig.group.rotation.y=c.heading;
+  // soft contact shadow under the car (grounds it; AI cars cast no real shadow on mobile)
+  carShadowAssets();
+  if(!c.shadowMesh){ c.shadowMesh=new THREE.Mesh(_carShadowGeo,_carShadowMat); scene.add(c.shadowMesh); }
+  c.shadowMesh.position.set(c.pos.x, 0.085+c.visY, c.pos.y); c.shadowMesh.rotation.y=c.heading;
+  c.shadowMesh.visible = !!(c.rig && c.rig.group && c.rig.group.visible);
 }
 
 /* =========================================================================
@@ -1527,7 +1545,7 @@ function updateCar(c, inp, dt){
     c.skidTimer-=dt;
     if(screech || offT){
       const intensity = offT?1 : clamp(slip/3 + (hardBrake?0.6:0) + (burnout?0.7:0), 0.4, 1.6);
-      for(let s=-1;s<=1;s+=2){ const wx=rx+Math.cos(c.heading)*0.85*s, wz=rz-(-Math.sin(c.heading))*0.85*s;
+      for(let s=-1;s<=1;s+=2){ const wx=rx+Math.cos(c.heading)*0.85*s, wz=rz-Math.sin(c.heading)*0.85*s;
         if(offT) dust.emit(wx,0.35+ey,wz,(Math.random()-.5)*2,1.3+Math.random(),(Math.random()-.5)*2, 0.55, 12+Math.random()*8);
         else if(s>0 || Math.random()<0.6) tireSmoke.emit(wx,0.3+ey,wz,(Math.random()-.5)*1.5, 1.1+Math.random()*0.8, (Math.random()-.5)*1.5, 0.32+intensity*0.08, 6+intensity*3+Math.random()*4);
       }
@@ -1547,7 +1565,7 @@ function updateCar(c, inp, dt){
 }
 
 function dropSkid(x,z,ang,ey){ ey=ey||0; for(let s=-1;s<=1;s+=2){ const m=skidPool[skidCursor]; skidCursor=(skidCursor+1)%skidPool.length;
-  m.position.set(x+Math.cos(ang)*0.7*s, 0.075+ey, z-(-Math.sin(ang))*0.7*s); m.rotation.y=ang; m.visible=true; } }
+  m.position.set(x+Math.cos(ang)*0.7*s, 0.075+ey, z-Math.sin(ang)*0.7*s); m.rotation.y=ang; m.visible=true; } }   // (cos,-sin) = true perpendicular to heading
 
 function updateProgress(c, prev){
   const S=SAMPLES, idx=c.trackIdx;
@@ -1589,7 +1607,8 @@ function aiInput(c){
 function updateSunShadow(){
   if(!sunLight||!sunDirV) return;
   const px=player.pos.x, pz=player.pos.y;       // keep the shadow box centred on the car
-  sunLight.position.set(px+sunDirV.x*140, sunDirV.y*140, pz+sunDirV.z*140);
+  const ly=Math.max(sunDirV.y,0.62);            // MATCH buildLights' raised elevation -> grounded, consistent shadow length
+  sunLight.position.set(px+sunDirV.x*160, ly*160, pz+sunDirV.z*160);
   sunLight.target.position.set(px,0,pz); sunLight.target.updateMatrixWorld();
 }
 function updateCamera(dt){
@@ -1813,6 +1832,8 @@ const CINEMATIC_SHADER = {
     '  col.rgb += mix(vec3(-0.015,0.0,0.03), vec3(0.045,0.018,-0.02), smoothstep(0.2,0.8,l))*uTone;', // teal/orange
     '  float v=smoothstep(0.95,0.30,length(vUv-0.5));',
     '  col.rgb*=mix(1.0,v,uVignette);',                                    // vignette
+    '  float dh=fract(sin(dot(vUv*vec2(1920.0,1080.0),vec2(12.9898,78.233)))*43758.5453);',
+    '  col.rgb += (dh-0.5)/255.0;',                                        // dither -> kills 8-bit sky/bloom banding
     '  col.rgb=pow(max(col.rgb,0.0), vec3(0.4545));',                      // linear -> sRGB
     '  gl_FragColor=vec4(col.rgb,1.0);',
     '}'
@@ -1911,8 +1932,10 @@ function buildWorld(idx){
   }
   if(WORLD){ scene.remove(WORLD); disposeGroup(WORLD); }
   WORLD=new THREE.Group(); scene.add(WORLD);
-  let fogCol = nightMode ? 0x0b1020 : currentTheme.fog;
-  if(rainOn) fogCol = nightMode ? 0x0a0e18 : 0x9aa3ad;              // rain greys the air
+  // fog = the SAME colour the sky shader fades to at the horizon (mix(sky.bot, white, 0.16)) -> distant geo dissolves INTO the sky
+  let fogCol = nightMode ? new THREE.Color(0x161d33)
+                         : new THREE.Color(currentTheme.sky.bot).lerp(new THREE.Color(0xffffff), 0.16);
+  if(rainOn) fogCol = new THREE.Color(nightMode ? 0x0a0e18 : 0x9aa3ad); // rain greys the air
   scene.fog=new THREE.Fog(fogCol, rainOn?80:120, rainOn?540:760);
   scene.add=function(o){ WORLD.add(o); return scene; };          // route world builders into WORLD
   try{
@@ -1978,7 +2001,8 @@ function init(){
   buildWorld(currentTrack);      // builds the selected track + theme (sky, lights, ground, road, props)
 
   // skid pool
-  skidShared=new THREE.MeshBasicMaterial({color:0x120c08, transparent:true, opacity:0.4, depthWrite:false});
+  skidShared=new THREE.MeshBasicMaterial({color:0x120c08, transparent:true, opacity:0.4, depthWrite:false,
+    polygonOffset:true, polygonOffsetFactor:-5, polygonOffsetUnits:-5});   // beat the road's -4 offset (no flicker into asphalt)
   const skidGeo=new THREE.PlaneGeometry(0.5,1.3); skidGeo.rotateX(-Math.PI/2);
   for(let i=0;i<160;i++){ const m=new THREE.Mesh(skidGeo, skidShared); m.visible=false; scene.add(m); skidPool.push(m); }
 
