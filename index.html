@@ -50,31 +50,44 @@
 
   /* ---------- overlays (menu / results) ---------- */
   .overlay{ position:fixed; inset:0; z-index:10; display:flex; flex-direction:column;
-            align-items:center; justify-content:center; text-align:center; padding:24px;
-            background:radial-gradient(120% 120% at 50% 18%, rgba(255,140,66,.30), rgba(20,10,30,.86) 62%); }
+            align-items:center; justify-content:center; text-align:center; padding:20px;
+            background:radial-gradient(135% 100% at 50% 0%, rgba(255,120,50,.20), rgba(14,8,22,.78) 52%, rgba(7,4,12,.94));
+            -webkit-backdrop-filter:blur(2px); backdrop-filter:blur(2px); }
   .hidden{ display:none !important; }
-  .title{ font-size:min(13vw,84px); font-weight:900; letter-spacing:1px; line-height:.95;
-          background:linear-gradient(180deg,#fff,#ffd23b 60%,#ff7a3c);
-          -webkit-background-clip:text; background-clip:text; color:transparent;
-          text-shadow:0 6px 24px rgba(0,0,0,.4); }
-  .sub{ margin-top:6px; font-size:min(4.5vw,20px); opacity:.9; font-weight:bold; letter-spacing:3px; color:#ffd9a0; }
-  #trackPick{ display:flex; gap:10px; margin-top:20px; flex-wrap:wrap; justify-content:center; }
-  .trackBtn{ pointer-events:auto; padding:9px 15px; border-radius:14px; border:2px solid rgba(255,255,255,.22);
-             background:rgba(30,16,42,.55); display:flex; flex-direction:column; align-items:center; min-width:92px; transition:.12s; cursor:pointer; }
-  .trackBtn b{ font-size:min(3.5vw,14px); letter-spacing:.5px; }
-  .trackBtn span{ font-size:min(2.8vw,10px); opacity:.65; margin-top:2px; }
-  .trackBtn.sel{ border-color:#ffd23b; background:rgba(255,120,60,.30); box-shadow:0 6px 20px rgba(255,90,60,.35); transform:translateY(-2px); }
-  #togRow{ display:flex; gap:10px; justify-content:center; margin-top:14px; }
-  .tog{ pointer-events:auto; padding:8px 16px; border-radius:20px; border:2px solid rgba(255,255,255,.20);
-        background:rgba(30,16,42,.5); font-size:min(3vw,12px); font-weight:700; letter-spacing:.5px; cursor:pointer; transition:.12s; }
-  .tog.on{ border-color:#7cc0ff; background:rgba(70,150,255,.32); box-shadow:0 4px 16px rgba(70,150,255,.35); }
-  #sndRow,#musRow{ display:flex; gap:10px; align-items:center; justify-content:center; margin-top:8px; }
-  #volSlider,#musSlider{ pointer-events:auto; width:min(46vw,200px); accent-color:#ff8a3c; cursor:pointer; }
+  .title{ font-size:min(16vw,104px); font-weight:900; letter-spacing:1px; line-height:.84; font-style:italic;
+          background:linear-gradient(180deg,#fff 6%,#ffd76b 52%,#ff7330);
+          -webkit-background-clip:text; background-clip:text; color:transparent; transform:skewX(-7deg);
+          filter:drop-shadow(0 3px 0 rgba(150,40,10,.55)) drop-shadow(0 16px 32px rgba(0,0,0,.6)); }
+  .sub{ margin-top:12px; font-size:min(3.3vw,14px); opacity:.95; font-weight:800; letter-spacing:4px; color:#ffd9a0; text-transform:uppercase; }
+  .sub::before,.sub::after{ content:''; display:inline-block; width:26px; height:2px; vertical-align:middle; margin:0 12px; background:linear-gradient(90deg,transparent,#ff8a3c); }
+  .sub::after{ background:linear-gradient(90deg,#ff8a3c,transparent); }
+  #trackPick{ display:flex; gap:11px; margin-top:24px; flex-wrap:wrap; justify-content:center; max-width:780px; }
+  .trackBtn{ pointer-events:auto; padding:12px 14px 10px; border-radius:16px; border:1.5px solid rgba(255,255,255,.12);
+             background:linear-gradient(165deg, rgba(48,28,64,.6), rgba(16,9,26,.6)); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+             display:flex; flex-direction:column; align-items:center; min-width:106px; transition:.16s ease; cursor:pointer; position:relative; overflow:hidden; }
+  .trackBtn .ic{ font-size:23px; line-height:1; margin-bottom:5px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
+  .trackBtn b{ font-size:min(3.4vw,13px); letter-spacing:.6px; }
+  .trackBtn span{ font-size:min(2.7vw,10px); opacity:.6; margin-top:2px; }
+  .trackBtn .dots{ margin-top:7px; display:flex; gap:3px; }
+  .trackBtn .dots i{ width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.22); }
+  .trackBtn .dots i.on{ background:#ff8a3c; }
+  .trackBtn:hover{ transform:translateY(-3px); border-color:rgba(255,255,255,.3); }
+  .trackBtn.sel{ border-color:#ffd23b; background:linear-gradient(165deg, rgba(255,120,60,.4), rgba(120,40,20,.5));
+                 box-shadow:0 8px 26px rgba(255,90,60,.45), inset 0 0 0 1px rgba(255,210,90,.5); transform:translateY(-4px); }
+  .trackBtn.sel::after{ content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,#ff5a3c,#ffd23b); }
+  #settings{ margin-top:18px; padding:13px 18px; border-radius:18px; background:rgba(12,7,20,.5);
+             -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); box-shadow:0 8px 30px rgba(0,0,0,.35); }
+  #togRow{ display:flex; gap:9px; justify-content:center; }
+  .tog{ pointer-events:auto; padding:8px 15px; border-radius:14px; border:1.5px solid rgba(255,255,255,.16);
+        background:rgba(255,255,255,.06); font-size:min(3vw,12px); font-weight:800; letter-spacing:.5px; cursor:pointer; transition:.14s; }
+  .tog.on{ border-color:#7cc0ff; background:rgba(70,150,255,.3); box-shadow:0 4px 16px rgba(70,150,255,.35); color:#fff; }
+  #sndRow,#musRow{ display:flex; gap:10px; align-items:center; justify-content:center; margin-top:9px; }
+  #volSlider,#musSlider{ pointer-events:auto; width:min(42vw,190px); accent-color:#ff8a3c; cursor:pointer; }
   #musSlider{ accent-color:#7cc0ff; }
-  .cta{ margin-top:30px; font-size:min(6vw,26px); font-weight:900; padding:16px 34px; border-radius:40px;
-        background:linear-gradient(90deg,#ff5a3c,#ffd23b); color:var(--ink);
-        box-shadow:0 10px 30px rgba(255,90,60,.45); animation:bob 1.4s ease-in-out infinite; }
-  @keyframes bob{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-7px) } }
+  .cta{ margin-top:22px; font-size:min(6.5vw,30px); font-weight:900; letter-spacing:1px; padding:15px 54px; border-radius:44px;
+        background:linear-gradient(95deg,#ff4d2c,#ff8a3c 45%,#ffd23b); color:#1a0f08; cursor:pointer;
+        box-shadow:0 12px 34px rgba(255,90,40,.5), inset 0 2px 0 rgba(255,255,255,.35); animation:bob 1.6s ease-in-out infinite; }
+  @keyframes bob{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-6px) } }
   .keys{ margin-top:26px; font-size:min(3.6vw,15px); opacity:.82; line-height:1.9; font-weight:normal; max-width:520px; }
   .keys b{ color:var(--accent2); }
   #results .title{ font-size:min(10vw,60px); }
@@ -84,8 +97,9 @@
   #resReward{ font-size:min(5.5vw,24px); font-weight:800; color:#ffd23b; margin-top:10px; min-height:1.2em; text-shadow:0 2px 10px rgba(0,0,0,.5); }
   .cta2{ pointer-events:auto; margin-top:14px; font-size:min(4.2vw,18px); font-weight:800; padding:11px 26px; border-radius:30px;
          background:rgba(255,255,255,.12); color:#fff; border:2px solid rgba(255,255,255,.25); box-shadow:none; animation:none; cursor:pointer; }
-  #coinBadge{ position:fixed; top:14px; right:16px; z-index:30; pointer-events:none; font-size:min(4.2vw,18px); font-weight:800;
-              color:#ffd23b; background:rgba(20,12,28,.55); padding:6px 14px; border-radius:18px; border:1px solid rgba(255,210,59,.4); }
+  #coinBadge{ position:fixed; top:14px; right:16px; z-index:30; pointer-events:none; font-size:min(4.4vw,19px); font-weight:900; letter-spacing:.5px;
+              color:#ffd23b; background:linear-gradient(150deg,rgba(40,24,12,.82),rgba(20,12,28,.72)); padding:7px 16px; border-radius:20px;
+              border:1px solid rgba(255,210,59,.5); box-shadow:0 4px 16px rgba(0,0,0,.4); }
 
   /* ---------- touch controls ---------- */
   #touch{ position:fixed; inset:0; z-index:8; pointer-events:none; display:none; }
@@ -160,28 +174,30 @@
 <div id="menu" class="overlay">
   <div id="coinBadge">🪙 0</div>
   <div class="title">SUNSET<br>DRIFT</div>
-  <div class="sub">NEON CITY · STREET RACE</div>
+  <div class="sub">NEON CITY · STREET CIRCUIT</div>
   <div id="trackPick">
-    <div class="trackBtn sel" data-i="0"><b>DOWNTOWN</b><span>Neon City</span></div>
-    <div class="trackBtn" data-i="1"><b>OCEAN DRIVE</b><span>Sunset Coast</span></div>
-    <div class="trackBtn" data-i="2"><b>THE DOCKS</b><span>Industrial</span></div>
-    <div class="trackBtn" data-i="3"><b>DESERT RUN</b><span>Red Canyon</span></div>
-    <div class="trackBtn" data-i="4"><b>PINE PASS</b><span>Forest</span></div>
+    <div class="trackBtn sel" data-i="0"><div class="ic">🌆</div><b>DOWNTOWN</b><span>Neon City</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
+    <div class="trackBtn" data-i="1"><div class="ic">🌅</div><b>OCEAN DRIVE</b><span>Sunset Coast</span><div class="dots"><i class="on"></i><i></i><i></i></div></div>
+    <div class="trackBtn" data-i="2"><div class="ic">🏗️</div><b>THE DOCKS</b><span>Industrial</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
+    <div class="trackBtn" data-i="3"><div class="ic">🏜️</div><b>DESERT RUN</b><span>Red Canyon</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
+    <div class="trackBtn" data-i="4"><div class="ic">🌲</div><b>PINE PASS</b><span>Forest</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
   </div>
-  <div id="togRow">
-    <div class="tog" id="togNight">🌙 NIGHT</div>
-    <div class="tog" id="togRain">🌧 RAIN</div>
-    <div class="tog" id="togLow">⚡ LITE</div>
+  <div id="settings">
+    <div id="togRow">
+      <div class="tog" id="togNight">🌙 NIGHT</div>
+      <div class="tog" id="togRain">🌧 RAIN</div>
+      <div class="tog" id="togLow">⚡ LITE</div>
+    </div>
+    <div id="sndRow">
+      <div class="tog" id="muteBtn">🔊</div>
+      <input id="volSlider" type="range" min="0" max="100" value="55" aria-label="sfx volume">
+    </div>
+    <div id="musRow">
+      <div class="tog" id="musMuteBtn">🎵</div>
+      <input id="musSlider" type="range" min="0" max="100" value="40" aria-label="music volume">
+    </div>
   </div>
-  <div id="sndRow">
-    <div class="tog" id="muteBtn">🔊</div>
-    <input id="volSlider" type="range" min="0" max="100" value="55" aria-label="sfx volume">
-  </div>
-  <div id="musRow">
-    <div class="tog" id="musMuteBtn">🎵</div>
-    <input id="musSlider" type="range" min="0" max="100" value="40" aria-label="music volume">
-  </div>
-  <div class="cta" id="startBtn">TAP TO RACE</div>
+  <div class="cta" id="startBtn">▶&nbsp; RACE</div>
   <div class="keys" id="keysHint">
     <span class="dk"><b>Arrows / WASD</b> drive &nbsp;•&nbsp; <b>Space</b> drift &nbsp;•&nbsp; <b>Shift</b> boost<br>
     <b>Esc</b> pause &nbsp;•&nbsp; <b>R</b> restart</span>
