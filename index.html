@@ -365,6 +365,14 @@ function computeRoadElev(){
     sampleElev[i]=((s/(2*R+1))-0.42)*roadAmp; }
 }
 function roadElevAt(idx){ return sampleElev.length? (sampleElev[((idx%SAMPLES)+SAMPLES)%SAMPLES]||0) : 0; }
+function roadElevExact(px, pz, idx){     // INTERPOLATED road elevation at the car's exact along-track position (no lag, no steps)
+  if(!sampleElev.length) return 0;
+  const i0=((idx%SAMPLES)+SAMPLES)%SAMPLES, i1=(i0+1)%SAMPLES, im=(i0-1+SAMPLES)%SAMPLES, p0=samplePts[i0];
+  const dx1=samplePts[i1].x-p0.x, dz1=samplePts[i1].y-p0.y, along=(px-p0.x)*dx1+(pz-p0.y)*dz1;
+  if(along>=0){ const f=clamp(along/((dx1*dx1+dz1*dz1)||1),0,1); return sampleElev[i0]+(sampleElev[i1]-sampleElev[i0])*f; }
+  const dxm=samplePts[im].x-p0.x, dzm=samplePts[im].y-p0.y, am=(px-p0.x)*dxm+(pz-p0.y)*dzm;
+  const f=clamp(am/((dxm*dxm+dzm*dzm)||1),0,1); return sampleElev[i0]+(sampleElev[im]-sampleElev[i0])*f;
+}
 const SAMPLES = 600;
 let trackCentroid = new THREE.Vector2();
 let trackRadius = 200;
@@ -798,8 +806,8 @@ function terrainHeight(x,z){
   if(terrainAmp<=0 || !terrainNoise) return 0;
   let h=(terrainNoise(x*0.006+50, z*0.006+50)-0.42)*2.4*terrainAmp;
   if(h<0) h*=0.4;                                        // shallower valleys
-  let best=0,bd=Infinity; for(let i=0;i<SAMPLES;i+=4){ const p=samplePts[i]; const dx=p.x-x,dz=p.y-z,dd=dx*dx+dz*dz; if(dd<bd){bd=dd;best=i;} }
-  const d=Math.sqrt(bd), re=sampleElev[best]||0;          // road elevation at the nearest centerline point
+  let best=0,bd=Infinity; for(let i=0;i<SAMPLES;i+=2){ const p=samplePts[i]; const dx=p.x-x,dz=p.y-z,dd=dx*dx+dz*dz; if(dd<bd){bd=dd;best=i;} }
+  const d=Math.sqrt(bd), re=roadElevExact(x,z,best);      // interpolated road elevation (matches the ribbon -> no shoulder seam)
   const blend=clamp((d-(CONFIG.roadHalfWidth+8))/42, 0, 1);
   return h*blend + (re-0.12)*(1-blend);                   // corridor rides the climbing road; terrain ramps up to the hills beside it
 }
@@ -1419,8 +1427,7 @@ function placeGrid(){
 }
 
 function syncCarMesh(c){
-  const re=roadElevAt(c.trackIdx);
-  c.visY = (c.visY===undefined) ? re : c.visY+(re-c.visY)*0.2;   // smooth ride up/down the climbing road
+  c.visY = roadElevExact(c.pos.x, c.pos.y, c.trackIdx);   // exact interpolated road height -> sits on the road at any speed
   c.rig.group.position.set(c.pos.x, 0.06+c.visY, c.pos.y);
   c.rig.group.rotation.y=c.heading;
 }
