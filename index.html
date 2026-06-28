@@ -96,9 +96,15 @@
   .cta.locked{ background:linear-gradient(90deg,#4a4450,#5a525e); color:#cfc8d4; box-shadow:none; animation:none; }
   body.touch .keys{ display:none; }
   .title{ font-size:min(13vw,76px); font-weight:900; letter-spacing:1px; line-height:.84; font-style:italic;
-          background:linear-gradient(180deg,#fff 6%,#ffd76b 52%,#ff7330);
+          background:linear-gradient(100deg, transparent 40%, rgba(255,255,255,.92) 49%, transparent 58%),
+                     linear-gradient(180deg,#fff 6%,#ffd76b 52%,#ff7330);
+          background-size:260% 100%, 100% 100%; background-position:140% 0, 0 0;
           -webkit-background-clip:text; background-clip:text; color:transparent; transform:skewX(-7deg);
-          filter:drop-shadow(0 3px 0 rgba(150,40,10,.55)) drop-shadow(0 16px 32px rgba(0,0,0,.6)); }
+          animation:titleshine 5s ease-in-out infinite, titleglow 3.2s ease-in-out infinite; }
+  @keyframes titleshine{ 0%,14%{ background-position:140% 0, 0 0 } 62%,100%{ background-position:-55% 0, 0 0 } }
+  @keyframes titleglow{ 0%,100%{ filter:drop-shadow(0 3px 0 rgba(150,40,10,.55)) drop-shadow(0 16px 32px rgba(0,0,0,.6)) drop-shadow(0 0 10px rgba(255,140,50,.28)); }
+                        50%{ filter:drop-shadow(0 3px 0 rgba(150,40,10,.55)) drop-shadow(0 16px 32px rgba(0,0,0,.6)) drop-shadow(0 0 22px rgba(255,175,75,.62)); } }
+  @media (prefers-reduced-motion:reduce){ .title{ animation:none; filter:drop-shadow(0 3px 0 rgba(150,40,10,.55)) drop-shadow(0 16px 32px rgba(0,0,0,.6)); } }
   .sub{ margin-top:12px; font-size:min(3.3vw,14px); opacity:.95; font-weight:800; letter-spacing:4px; color:#ffd9a0; text-transform:uppercase; }
   .sub::before,.sub::after{ content:''; display:inline-block; width:26px; height:2px; vertical-align:middle; margin:0 12px; background:linear-gradient(90deg,transparent,#ff8a3c); }
   .sub::after{ background:linear-gradient(90deg,#ff8a3c,transparent); }
@@ -391,7 +397,7 @@ let trackCentroid = new THREE.Vector2();
 let trackRadius = 200;
 let dust, sparks, tireSmoke, skidPool = [], skidCursor = 0, skidShared;
 let audio;
-let sunLight=null, sunDirV=null, glowTex=null;
+let sunLight=null, sunDirV=null, glowTex=null, skyMat=null;
 let carBodyRaw=null, carWheelRaw=null, carReady=false, carYaw=0;   // realistic GLB car (body + the pack's own wheels)
 // player-selectable fleet (all CC0, generic/non-branded): the original Drifter + 2 Quaternius sports cars
 const CARS=[ {name:'DRIFTER', kind:'doge',                spd:70,  grip:88, price:0},
@@ -713,6 +719,7 @@ function buildTrackMeshes(){
   else if(rth==='forest'){ roadMat.color=new THREE.Color(0x6a6d74); roadMat.emissiveIntensity=0.3; }
   if(rainOn){                                            // wet asphalt: darker + glossy reflective sheen
     roadMat.color=new THREE.Color(0x6e6e76); roadMat.roughness=0.16; roadMat.metalness=0.5; roadMat.emissiveIntensity=0.26;
+    roadMat.envMapIntensity=1.9; roadMat.normalScale.set(0.4,0.4);   // mirror the captured sunset sky down the wet road
   }
 
   scene.add(buildRibbon(CONFIG.roadHalfWidth, 0.07, null, null, null, 1, null, roadMat)); // textured road (v=world units)
@@ -1226,9 +1233,9 @@ function buildSky(){
   const cloudAmt = nightMode?0.12 : (th==='desert'?0.45 : th==='forest'?0.7 : th==='coast'?0.55 : th==='docks'?0.4 : 0.3);
   const geo=new THREE.SphereGeometry(1400,32,20);
   const mat=new THREE.ShaderMaterial({ side:THREE.BackSide, depthWrite:false, fog:false,
-    uniforms:{ top:{value:topC}, bot:{value:botC}, sunDir:{value:sunDir.clone()}, sunCol:{value:sunC}, cloud:{value:cloudAmt}, night:{value:nightMode?1:0} },
+    uniforms:{ top:{value:topC}, bot:{value:botC}, sunDir:{value:sunDir.clone()}, sunCol:{value:sunC}, cloud:{value:cloudAmt}, night:{value:nightMode?1:0}, uTime:{value:0}, lowq:{value:lowQuality?1:0} },
     vertexShader:`varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-    fragmentShader:`varying vec3 vP; uniform vec3 top; uniform vec3 bot; uniform vec3 sunDir; uniform vec3 sunCol; uniform float cloud; uniform float night;
+    fragmentShader:`varying vec3 vP; uniform vec3 top; uniform vec3 bot; uniform vec3 sunDir; uniform vec3 sunCol; uniform float cloud; uniform float night; uniform float uTime; uniform float lowq;
       float hash(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
       float noise(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f);
         return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y); }
@@ -1239,17 +1246,20 @@ function buildSky(){
         vec3 horizon=mix(bot, vec3(1.0), 0.16*(1.0-night));
         vec3 sky=mix(horizon, top, pow(h,0.8));
         float sd=max(dot(d, normalize(sunDir)),0.0);
-        sky += sunCol*(pow(sd,6.0)*0.30 + pow(sd,220.0)*1.3)*(1.0-night*0.6);
+        float breathe=1.0+0.10*sin(uTime*1.1);                  // the glow gently breathes
+        sky += sunCol*(pow(sd,6.0)*0.30*breathe + pow(sd,220.0)*1.3)*(1.0-night*0.6);
         if(d.y>0.03 && cloud>0.01){
-          vec2 uv=d.xz/(d.y+0.25)*0.9;
-          float c=smoothstep(0.5,0.78,fbm(uv*1.6))*clamp((d.y-0.03)*3.0,0.0,1.0)*cloud;
+          vec2 base=d.xz/(d.y+0.25)*0.9;
+          float c=smoothstep(0.5,0.78,fbm(base*1.6 + vec2(uTime*0.004, uTime*0.0015)))*cloud;   // clouds drift
+          if(lowq<0.5) c=max(c, smoothstep(0.55,0.82,fbm(base*3.1 + vec2(uTime*-0.0026,0.0)))*cloud*0.6);  // 2nd parallax layer
+          c*=clamp((d.y-0.03)*3.0,0.0,1.0);
           vec3 cc=mix(vec3(0.93), sunCol*0.5+vec3(0.45), 0.25)*(1.0-night*0.7);
           sky=mix(sky, cc, c);
         }
         gl_FragColor=vec4(sky,1.0);
       }`
   });
-  scene.add(new THREE.Mesh(geo,mat));
+  skyMat=mat; scene.add(new THREE.Mesh(geo,mat));   // skyMat.uTime animated in animate() -> drifting clouds + breathing sun
   // a small physical sun/moon disc (the glow is in the sky shader now — no harsh additive halo)
   const sunPos=sunDir.clone().multiplyScalar(1180);
   const sun=new THREE.Mesh(new THREE.CircleGeometry(nightMode?46:64,32), new THREE.MeshBasicMaterial({color:sunC, fog:false}));
@@ -1725,9 +1735,11 @@ function updateCamera(dt){
   camera.lookAt(_cl);
   const targetFov=(c.boosting?CONFIG.fovBoost:CONFIG.fovBase) + Math.min(player.vel.length()/CONFIG.topSpeed,1)*9;
   camera.fov=lerp(camera.fov,targetFov,0.08); camera.updateProjectionMatrix();
-  if(cinePass){ const sr=Math.min(player.vel.length()/CONFIG.topSpeed,1.4);   // speed-driven motion blur
+  if(cinePass){ const sr=Math.min(player.vel.length()/CONFIG.topSpeed,1.4);   // speed-driven motion blur + speed lines
     const tgt=Math.min(Math.max(0,sr-0.32)*1.15 + (c.boosting?0.5:0), 1.4);
-    cinePass.uniforms.uBlur.value += (tgt-cinePass.uniforms.uBlur.value)*0.12; }
+    cinePass.uniforms.uBlur.value += (tgt-cinePass.uniforms.uBlur.value)*0.12;
+    const spTgt=lowQuality?0:Math.min(Math.max(0,sr-0.55)*1.4 + (c.boosting?0.7:0), 1.5);   // streaks only kick in fast/boost
+    cinePass.uniforms.uSpeed.value += (spTgt-cinePass.uniforms.uSpeed.value)*0.1; }
 }
 
 /* =========================================================================
@@ -1929,16 +1941,23 @@ function resolveCollisions(){
 
 // one final pass: radial speed blur (sharp centre, streaking edges) + grade + vignette + sRGB
 const CINEMATIC_SHADER = {
-  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uContrast:{value:1.13}, uSat:{value:1.2}, uTone:{value:0.9}, uVignette:{value:0.55} },
+  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uSpeed:{value:0.0}, uContrast:{value:1.13}, uSat:{value:1.2}, uTone:{value:0.9}, uVignette:{value:0.55} },
   vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader:[
     'precision highp float; varying vec2 vUv; uniform sampler2D tDiffuse;',
-    'uniform float uBlur,uContrast,uSat,uTone,uVignette;',
+    'uniform float uBlur,uSpeed,uContrast,uSat,uTone,uVignette;',
     'void main(){',
     '  vec2 dir=vUv-0.5; float edge=smoothstep(0.12,0.55,length(dir)); vec4 col=vec4(0.0); float tot=0.0;',
     '  for(int i=0;i<6;i++){ float t=float(i)/5.0; float w=1.0-0.5*t;',
     '    col+=texture2D(tDiffuse, vUv-dir*uBlur*t*0.19*edge)*w; tot+=w; }',
     '  col/=tot;',
+    '  if(uSpeed>0.01){',                                                   // sense-of-speed at the edges (boost/high speed)
+    '    vec2 ca=dir*uSpeed*0.009*edge;',                                    // chromatic aberration outward
+    '    col.r=texture2D(tDiffuse, vUv+ca).r; col.b=texture2D(tDiffuse, vUv-ca).b;',
+    '    float ang=atan(dir.y,dir.x); float streak=pow(sin(ang*64.0)*0.5+0.5, 9.0);',  // radial speed lines
+    '    col.rgb += streak*edge*uSpeed*0.15;',
+    '    float l2=dot(col.rgb,vec3(0.299,0.587,0.114)); col.rgb=mix(col.rgb, vec3(l2), edge*uSpeed*0.12);',  // edge desat
+    '  }',
     '  col.rgb=(col.rgb-0.5)*uContrast+0.5;',                               // contrast
     '  float l=dot(col.rgb, vec3(0.299,0.587,0.114));',
     '  col.rgb=mix(vec3(l), col.rgb, uSat);',                              // saturation
@@ -1968,6 +1987,7 @@ function buildComposer(){
 }
 function animate(){ requestAnimationFrame(animate);
   const dt=Math.min(clock.getDelta(),0.05); update(dt);
+  if(skyMat) skyMat.uniforms.uTime.value=clock.getElapsedTime();   // living sky: drift clouds + breathe sun
   if(rainOn) updateRain(dt);
   if(composer) composer.render(); else renderer.render(scene,camera); }
 
