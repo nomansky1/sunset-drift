@@ -611,9 +611,9 @@ function buildTrackMeshes(){
   roadMap.wrapS=THREE.ClampToEdgeWrapping; roadMap.wrapT=THREE.RepeatWrapping;
   roadMap.repeat.set(1,1/14); roadMap.anisotropy=aniso;
   const grain=p=>{ const t=loader.load(p); t.wrapS=t.wrapT=THREE.RepeatWrapping;
-    t.repeat.set(CONFIG.roadHalfWidth*0.55,0.32); t.anisotropy=aniso; return t; };
+    t.repeat.set(CONFIG.roadHalfWidth*0.85,0.5); t.anisotropy=aniso; return t; };   // tighter tiling = more visible asphalt grit
   const roadMat=new THREE.MeshStandardMaterial({ map:roadMap,
-    normalMap:grain('textures/road_normal.jpg'), normalScale:new THREE.Vector2(0.8,0.8),
+    normalMap:grain('textures/road_normal.jpg'), normalScale:new THREE.Vector2(1.4,1.4),
     roughnessMap:grain('textures/road_rough.jpg'), roughness:0.42, metalness:0.1,
     emissiveMap:roadMap, emissive:0xffffff, emissiveIntensity:0.42,
     polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4 }); // render ON TOP of the terrain corridor (no z-fight bleed-through)
@@ -759,6 +759,13 @@ function makeGroundGrain(){
     const s=1+Math.random()*2; x.fillRect(Math.random()*S,Math.random()*S,s,s); }
   for(let k=0;k<46;k++){ x.fillStyle='rgba(0,0,0,0.05)'; const r=4+Math.random()*11; x.beginPath(); x.arc(Math.random()*S,Math.random()*S,r,0,7); x.fill(); }
   const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
+}
+let _flakeTex=null;                                   // subtle metallic-flake normal for car paint
+function flakeTex(){ if(_flakeTex) return _flakeTex;
+  const S=64, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+  x.fillStyle='#8080ff'; x.fillRect(0,0,S,S);
+  for(let k=0;k<1500;k++){ const r=118+(Math.random()*20|0), g=118+(Math.random()*20|0); x.fillStyle='rgb('+r+','+g+',255)'; x.fillRect(Math.random()*S|0,Math.random()*S|0,1,1); }
+  _flakeTex=new THREE.CanvasTexture(c); _flakeTex.wrapS=_flakeTex.wrapT=THREE.RepeatWrapping; _flakeTex.repeat.set(6,6); return _flakeTex;
 }
 function buildTerrain(){
   if(terrainAmp<=0){                                     // flat themes (city / docks) keep the textured plane
@@ -1255,7 +1262,9 @@ function buildDogeCar(rig, color){
   const chassis=new THREE.Group();
   const body=carBodyRaw.clone();
   body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false;
-    if(o.material){ if(o.material.name==='body'){ o.material=o.material.clone(); o.material.color.set(color); o.material.metalness=0.42; o.material.roughness=0.36; } o.material.envMapIntensity=0.8; } } });
+    if(o.material){ if(o.material.name==='body'){ o.material=o.material.clone(); o.material.color.set(color); o.material.metalness=0.42; o.material.roughness=0.36;
+      o.material.normalMap=flakeTex(); o.material.normalScale=new THREE.Vector2(0.22,0.22); }                              // metallic-flake paint
+      o.material.envMapIntensity=0.8; } } });
   chassis.add(body); asm.add(chassis);
   const wheels=[], front=[];
   CAR_WHEELS.forEach(wp=>{ const wg=new THREE.Group(); wg.position.set(wp.x,wp.y,wp.z); wg.rotation.order='YXZ';
