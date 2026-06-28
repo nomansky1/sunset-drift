@@ -170,6 +170,12 @@
              -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px); cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,.45); }
   body.touch #pauseBtn.show{ display:flex; }       /* touch only — desktop pauses with Esc */
   body.touch #pauseBtn{ width:48px; height:48px; font-size:17px; }
+  #camBtn{ position:absolute; top:calc(env(safe-area-inset-top,10px) + 58px); left:14px; pointer-events:auto; display:none;
+           width:48px; height:48px; border-radius:13px; align-items:center; justify-content:center; font-size:20px; cursor:pointer;
+           background:linear-gradient(160deg,rgba(60,160,255,.3),rgba(20,12,28,.6)); border:1.5px solid rgba(255,255,255,.28);
+           -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px); box-shadow:0 4px 16px rgba(0,0,0,.45); }
+  body.touch #camBtn.show{ display:flex; }         /* touch only — desktop cycles with C */
+  body.autodrive #joy-base::before{ display:none; }   /* gas is automatic -> hide the ▲ cue */
   #pauseRow{ display:flex; gap:12px; margin-top:14px; }
   #rivalTag{ position:absolute; top:calc(env(safe-area-inset-top,10px) + 116px); left:50%; transform:translateX(-50%);
              font-size:min(3.4vw,13px); font-weight:800; letter-spacing:1px; color:#ff9a7c; background:rgba(20,8,16,.55);
@@ -295,6 +301,7 @@
        <div id="boostWrap"><div id="boostBar"></div></div></div>
   <div id="scoreBox"></div>
   <div id="pauseBtn">❚❚</div>
+  <div id="camBtn">📷</div>
   <div id="rivalTag" class="hidden"></div>
 </div>
 <div id="flash"></div>
@@ -339,6 +346,7 @@
     </div>
     <div id="settings">
       <div id="togRow">
+        <div class="tog on" id="togAuto">🚗 AUTO</div>
         <div class="tog" id="togNight">🌙 NIGHT</div>
         <div class="tog" id="togRain">🌧 RAIN</div>
         <div class="tog" id="togLow">⚡ LITE</div>
@@ -566,6 +574,7 @@ const showTouch = isTouch || window.innerWidth < 820;
 const keys = { up:false, down:false, left:false, right:false, space:false, shift:false };
 let joyX = 0;   // analog steering from the on-screen joystick (-1..1; + = left, matching the keys)
 let joyY = 0;   // analog throttle/brake from the joystick (+ = push up = accelerate, - = push down = brake)
+let autoDrive = true;   // Horizon-Chase style: auto-accelerate; joystick just steers + pull down to brake
 
 // scratch
 const _v = new THREE.Vector2(), _f = new THREE.Vector2(), _l = new THREE.Vector2(), _r = new THREE.Vector2();
@@ -1742,7 +1751,7 @@ function updateCar(c, inp, dt){
         sparks.emit(c.pos.x,0.5,c.pos.y,(Math.random()-.5)*4,1,(Math.random()-.5)*4,0.3,9);
         if(raceTime-(c._thudT||-1)>0.25){ c._thudT=raceTime; audio&&audio.thud(clamp(vOut/40,0.3,1)); }
         if(navigator.vibrate){ try{navigator.vibrate(20);}catch(e){} } }
-      if(!c.isPlayer && c.vel.length()<3){                  // un-wedge a slow AI: steer back parallel to the road + nudge forward
+      if((!c.isPlayer || autoDrive) && c.vel.length()<3){    // un-wedge a slow AI (or auto-driving player): steer back parallel + nudge forward
         const t=sampleTan[c.trackIdx]; c.heading += angleDiff(Math.atan2(t.x,t.y), c.heading)*Math.min(1,dt*4);
         c.vel.x += Math.sin(c.heading)*7*dt; c.vel.y += Math.cos(c.heading)*7*dt; }
     }
@@ -1848,17 +1857,28 @@ function updateSunShadow(){
   sunLight.position.set(px+sunDirV.x*160, ly*160, pz+sunDirV.z*160);
   sunLight.target.position.set(px,0,pz); sunLight.target.updateMatrixWorld();
 }
+const CAM_VIEWS=[                                              // press C / tap 📷 to cycle
+  {name:'CHASE', dist:11,  height:4.7, look:7.5, fov:66},     // default
+  {name:'CLOSE', dist:8.0, height:3.4, look:6.5, fov:72},     // closer + lower to the car
+  {name:'LOW',   dist:6.0, height:2.2, look:11,  fov:80},     // near the road, immersive
+  {name:'FAR',   dist:15,  height:7.2, look:9,   fov:63},     // wide overview
+];
+let camView=0;
+function loadCamView(){ try{ camView=Math.min(CAM_VIEWS.length-1, Math.max(0, parseInt(localStorage.getItem('sd_cam'))||0)); }catch(e){ camView=0; } }
+function cycleCam(){ camView=(camView+1)%CAM_VIEWS.length; try{ localStorage.setItem('sd_cam',camView); }catch(e){}
+  popup('📷 '+CAM_VIEWS[camView].name+' VIEW', '#7ce0ff'); }
 function updateCamera(dt){
+  const V=CAM_VIEWS[camView]||CAM_VIEWS[0];
   const c=player; _f.set(Math.sin(c.heading), Math.cos(c.heading));
   const amt=(c.boosting?0.5:0)+camShake; camShake=Math.max(0,camShake-dt*3);
   const sx=amt?(Math.random()-.5)*amt:0, sz=amt?(Math.random()-.5)*amt:0;
   const cy=c.visY||0;                                          // follow the road elevation
-  _cd.set(c.pos.x - _f.x*CONFIG.camDist + sx, CONFIG.camHeight + cy + (c.boosting?-0.4:0), c.pos.y - _f.y*CONFIG.camDist + sz);
+  _cd.set(c.pos.x - _f.x*V.dist + sx, V.height + cy + (c.boosting?-0.4:0), c.pos.y - _f.y*V.dist + sz);
   const k=1-Math.exp(-CONFIG.camLerp*dt);
   camera.position.lerp(_cd, k);
-  _cl.set(c.pos.x + _f.x*CONFIG.camLookAhead, 1.2+cy, c.pos.y + _f.y*CONFIG.camLookAhead);
+  _cl.set(c.pos.x + _f.x*V.look, 1.2+cy, c.pos.y + _f.y*V.look);
   camera.lookAt(_cl);
-  const targetFov=(c.boosting?CONFIG.fovBoost:CONFIG.fovBase) + Math.min(player.vel.length()/CONFIG.topSpeed,1)*9;
+  const targetFov=(c.boosting?V.fov+12:V.fov) + Math.min(player.vel.length()/CONFIG.topSpeed,1)*9;
   camera.fov=lerp(camera.fov,targetFov,0.08); camera.updateProjectionMatrix();
   if(cinePass){ const sr=Math.min(player.vel.length()/CONFIG.topSpeed,1.4);   // speed-driven motion blur + speed lines
     const tgt=Math.min(Math.max(0,sr-0.32)*1.15 + (c.boosting?0.5:0), 1.4);
@@ -1974,13 +1994,14 @@ function startGame(){
   lapTimes=[]; player._perfectArmed=false; player._autoLaunch=Math.random()<0.6; assignRival();   // per-race state
   document.body.classList.remove('inmenu');
   elMenu.classList.add('hidden'); elResults.classList.add('hidden');
-  document.getElementById('pauseBtn').classList.add('show'); document.getElementById('pauseMenu').classList.add('hidden');
+  document.getElementById('pauseBtn').classList.add('show'); document.getElementById('camBtn').classList.add('show'); document.getElementById('pauseMenu').classList.add('hidden');
   skidPool.forEach(m=>m.visible=false);
   // snap camera behind player immediately
   _f.set(Math.sin(player.heading),Math.cos(player.heading));
   camera.position.set(player.pos.x-_f.x*CONFIG.camDist, CONFIG.camHeight, player.pos.y-_f.y*CONFIG.camDist);
 }
 function hidePauseUI(){ const pb=document.getElementById('pauseBtn'); if(pb) pb.classList.remove('show');
+  const cb=document.getElementById('camBtn'); if(cb) cb.classList.remove('show');
   const pm=document.getElementById('pauseMenu'); if(pm) pm.classList.add('hidden'); }
 function pauseGame(){ if(state!=='race') return; state='paused'; document.getElementById('pauseMenu').classList.remove('hidden'); if(audio&&audio.ok) audio.update(0,0,false); }
 function resumeGame(){ if(state!=='paused') return; document.getElementById('pauseMenu').classList.add('hidden'); state='race'; }
@@ -2060,7 +2081,10 @@ function update(dt){
     updateCamera(dt);                                                          // keep the camera alive; world frozen
   } else if(state==='race'){
     raceTime+=dt; if(goTimer>0) goTimer-=dt; else if(elFlash.textContent==='GO!') elFlash.classList.remove('show');
-    const inp = window.__auto ? aiInput(player) : { throttle: keys.up || joyY>0.25, brake: keys.down || joyY<-0.25,
+    const braking = keys.down || joyY<-0.3;
+    const inp = window.__auto ? aiInput(player) : {
+      throttle: autoDrive ? !braking : (keys.up || joyY>0.25),   // auto-accelerate (unless braking) or manual gas
+      brake: braking,
       steer: clamp((keys.left?1:0)-(keys.right?1:0) + joyX, -1, 1), drift: keys.space, boost: keys.shift };
     updateCar(player, inp, dt);
     for(let i=1;i<cars.length;i++){ const c=cars[i];
@@ -2172,6 +2196,7 @@ function bindKeys(){
     if(map[e.code]!==undefined){ keys[map[e.code]]=true; e.preventDefault(); }
     if(e.code==='Enter' && (state==='menu')) startGame();
     if(e.code==='KeyR' && (state==='finished'||state==='race')) startGame();
+    if(e.code==='KeyC' && state!=='menu') cycleCam();
     if(e.code==='Escape' && state==='race'){ pauseGame(); }
     else if(e.code==='Escape' && state==='paused'){ resumeGame(); }
   });
@@ -2338,6 +2363,10 @@ function init(){
     document.getElementById('champ').classList.add('hidden');
     if(champ.active){ currentTrack=champ.order[champ.round]; selectTrack(currentTrack); startGame(); } else showMenu(); });
   document.querySelectorAll('.trackBtn').forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); if(state==='menu') selectTrack(+b.dataset.i); }));
+  const togAuto=document.getElementById('togAuto');
+  togAuto.addEventListener('click', e=>{ e.stopPropagation(); autoDrive=!autoDrive; togAuto.classList.toggle('on',autoDrive);
+    document.body.classList.toggle('autodrive', autoDrive); try{ localStorage.setItem('sd_auto', autoDrive?1:0); }catch(_){} });
+  document.getElementById('camBtn').addEventListener('click', e=>{ e.stopPropagation(); cycleCam(); });
   const togNight=document.getElementById('togNight'), togRain=document.getElementById('togRain');
   togNight.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return; nightMode=!nightMode; togNight.classList.toggle('on',nightMode); selectTrack(currentTrack); });
   togRain.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return; rainOn=!rainOn; togRain.classList.toggle('on',rainOn); selectTrack(currentTrack); });
@@ -2367,7 +2396,10 @@ function init(){
     currentTrack=(currentTrack+1)%TRACKS.length; selectTrack(currentTrack); startGame(); });
   document.getElementById('garageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
   loadCoins(); renderCoins();
-  loadSelCar(); loadOwned(); loadStars();
+  loadSelCar(); loadOwned(); loadStars(); loadCamView();
+  try{ const a=localStorage.getItem('sd_auto'); autoDrive = a===null ? true : a==='1'; }catch(_){ autoDrive=true; }
+  document.body.classList.toggle('autodrive', autoDrive);
+  document.getElementById('togAuto').classList.toggle('on', autoDrive);
   const swapCar=(d)=>{ selectedCar=(selectedCar+d+CARS.length)%CARS.length; renderShop(); saveSelCar(); upgradeCars(); };
   document.getElementById('carPrev').addEventListener('click', e=>{ e.stopPropagation(); swapCar(-1); });
   document.getElementById('carNext').addEventListener('click', e=>{ e.stopPropagation(); swapCar(1); });
