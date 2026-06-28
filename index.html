@@ -76,6 +76,13 @@
   .stat label{ font-size:10px; font-weight:800; letter-spacing:1px; color:#c8c6d4; width:34px; text-align:right; }
   .stat .bar{ flex:1; height:7px; border-radius:4px; background:rgba(255,255,255,.13); overflow:hidden; }
   .stat .bar i{ display:block; height:100%; border-radius:4px; background:linear-gradient(90deg,#37d6ff,#ffd23b); width:50%; transition:width .25s; }
+  #carStatus{ margin-top:8px; font-size:13px; font-weight:800; letter-spacing:.5px; min-height:1.2em; }
+  #carStatus.owned{ color:#5fe08a; }
+  #carStatus.lock{ pointer-events:auto; cursor:pointer; display:inline-block; padding:6px 14px; border-radius:12px; color:#ffd23b;
+                   background:rgba(255,210,59,.12); border:1.5px solid rgba(255,210,59,.4); }
+  #carStatus.lock.afford{ background:linear-gradient(90deg,#ff7a36,#ffd23b); color:#1a0f08; border-color:transparent; box-shadow:0 4px 16px rgba(255,150,60,.4); animation:bob 1.6s ease-in-out infinite; }
+  #carStatus.lock:not(.afford){ opacity:.7; }
+  .cta.locked{ background:linear-gradient(90deg,#4a4450,#5a525e); color:#cfc8d4; box-shadow:none; animation:none; }
   body.touch .keys{ display:none; }
   .title{ font-size:min(13vw,76px); font-weight:900; letter-spacing:1px; line-height:.84; font-style:italic;
           background:linear-gradient(180deg,#fff 6%,#ffd76b 52%,#ff7330);
@@ -121,7 +128,8 @@
   #resStats{ font-size:min(4.6vw,20px); line-height:1.8; margin-top:6px; }
   #resStats b{ color:#fff; }
   #resReward{ font-size:min(5.5vw,24px); font-weight:800; color:#ffd23b; margin-top:10px; min-height:1.2em; text-shadow:0 2px 10px rgba(0,0,0,.5); }
-  .cta2{ pointer-events:auto; margin-top:14px; font-size:min(4.2vw,18px); font-weight:800; padding:11px 26px; border-radius:30px;
+  #resBtnRow{ display:flex; gap:12px; margin-top:14px; }
+  .cta2{ pointer-events:auto; font-size:min(4.2vw,18px); font-weight:800; padding:11px 24px; border-radius:30px;
          background:rgba(255,255,255,.12); color:#fff; border:2px solid rgba(255,255,255,.25); box-shadow:none; animation:none; cursor:pointer; }
   #coinBadge{ position:fixed; top:14px; right:16px; z-index:30; pointer-events:none; font-size:min(4.4vw,19px); font-weight:900; letter-spacing:.5px;
               color:#ffd23b; background:linear-gradient(150deg,rgba(40,24,12,.82),rgba(20,12,28,.72)); padding:7px 16px; border-radius:20px;
@@ -219,6 +227,7 @@
           <div class="stat"><label>SPD</label><div class="bar"><i id="statSpd"></i></div></div>
           <div class="stat"><label>GRIP</label><div class="bar"><i id="statGrip"></i></div></div>
         </div>
+        <div id="carStatus"></div>
       </div>
       <div class="carArrow" id="carNext">▶</div>
     </div>
@@ -249,7 +258,7 @@
   <div id="resStats"></div>
   <div id="resReward"></div>
   <div class="cta" id="nextBtn">NEXT RACE →</div>
-  <div class="cta cta2" id="againBtn">RETRY</div>
+  <div id="resBtnRow"><div class="cta cta2" id="againBtn">RETRY</div><div class="cta cta2" id="garageBtn">🏠 GARAGE</div></div>
 </div>
 
 <!-- rotate hint -->
@@ -334,10 +343,31 @@ let audio;
 let sunLight=null, sunDirV=null, glowTex=null;
 let carBodyRaw=null, carWheelRaw=null, carReady=false, carYaw=0;   // realistic GLB car (body + the pack's own wheels)
 // player-selectable fleet (all CC0, generic/non-branded): the original Drifter + 2 Quaternius sports cars
-const CARS=[ {name:'DRIFTER', kind:'doge', spd:70, grip:88},
-             {name:'COUPE',   kind:'glb', raw:'sport', yaw:0, spd:86, grip:74},   // Quaternius cars face +Z (= forward); no flip
-             {name:'EXOTIC',  kind:'glb', raw:'super', yaw:0, spd:100, grip:64} ];
-let fleetRaw={}, selectedCar=0;
+const CARS=[ {name:'DRIFTER', kind:'doge',                spd:70,  grip:88, price:0},
+             {name:'HATCH',   kind:'glb', raw:'hatch',  yaw:0, spd:78,  grip:80, price:200},   // Quaternius cars face +Z (= forward); no flip
+             {name:'PICKUP',  kind:'glb', raw:'pickup', yaw:0, spd:74,  grip:84, price:350},
+             {name:'COUPE',   kind:'glb', raw:'sport',  yaw:0, spd:86,  grip:74, price:450},
+             {name:'SUV',     kind:'glb', raw:'suv',    yaw:0, spd:80,  grip:82, price:600},
+             {name:'EXOTIC',  kind:'glb', raw:'super',  yaw:0, spd:100, grip:64, price:900} ];
+let fleetRaw={}, selectedCar=0, ownedCars=[];
+function loadOwned(){ try{ const o=JSON.parse(localStorage.getItem('sd_owned')); ownedCars=Array.isArray(o)?o:[]; }catch(e){ ownedCars=[]; }
+  for(let i=0;i<CARS.length;i++) if(ownedCars[i]===undefined) ownedCars[i]=(CARS[i].price===0); }
+function saveOwned(){ try{ localStorage.setItem('sd_owned', JSON.stringify(ownedCars)); }catch(e){} }
+function isOwned(i){ return !!ownedCars[i]; }
+function carMul(i){ const c=CARS[i]||CARS[0]; return { spd:0.9+(c.spd-70)/30*0.22, grip:0.86+(c.grip-60)/30*0.24 }; }  // stat -> physics
+function renderShop(){                                   // menu car panel: name, stats, owned/unlock, RACE state
+  const i=selectedCar, c=CARS[i], nm=document.getElementById('carName'); if(!nm) return;
+  const st=document.getElementById('carStatus'), btn=document.getElementById('startBtn');
+  nm.textContent='🏎 '+c.name;
+  const ss=document.getElementById('statSpd'), sg=document.getElementById('statGrip');
+  if(ss) ss.style.width=c.spd+'%'; if(sg) sg.style.width=c.grip+'%';
+  if(isOwned(i)){ st.className='owned'; st.textContent=(c.price>0?'✓ OWNED':'STARTER CAR'); st.onclick=null;
+    btn.classList.remove('locked'); btn.innerHTML='▶&nbsp; RACE'; }
+  else { const afford=coins>=c.price; st.className='lock'+(afford?' afford':'');
+    st.textContent=(afford?'UNLOCK · ':'🔒 ')+c.price+' 🪙';
+    st.onclick=(e)=>{ if(e) e.stopPropagation(); if(coins>=CARS[i].price){ coins-=CARS[i].price; saveCoins(); renderCoins(); ownedCars[i]=true; saveOwned(); renderShop(); } };
+    btn.classList.add('locked'); btn.innerHTML='🔒 UNLOCK TO RACE'; }
+}
 function loadSelCar(){ try{ selectedCar=Math.min(CARS.length-1, Math.max(0, parseInt(localStorage.getItem('sd_car'))||0)); }catch(e){ selectedCar=0; } }
 function saveSelCar(){ try{ localStorage.setItem('sd_car', selectedCar); }catch(e){} }
 let WORLD=null, currentTrack=0, currentTheme=null;                 // selectable themed tracks (rebuildable world)
@@ -1234,7 +1264,8 @@ function loadCarModels(){
       undefined, ()=>{ carReady=true; if(cars&&cars.length) upgradeCars(); });   // body-only if wheels fail
   }, undefined, ()=>{}); }catch(e){}
   // fleet sports cars
-  [['sport','models/cc0/cars/sportscar.glb'],['super','models/cc0/cars/supercar.glb']].forEach(([k,f])=>{
+  [['sport','models/cc0/cars/sportscar.glb'],['super','models/cc0/cars/supercar.glb'],
+   ['hatch','models/cc0/cars/hatch.glb'],['suv','models/cc0/cars/suv.glb'],['pickup','models/cc0/cars/pickup.glb']].forEach(([k,f])=>{
     try{ L.load(f, g=>{ fleetRaw[k]=g.scene; if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
   });
 }
@@ -1370,7 +1401,7 @@ function updateCar(c, inp, dt){
   const speed=c.vel.length();
 
   // engine
-  if(inp.throttle && !inp.brake) c.vel.addScaledVector(_f, CONFIG.engineAccel*dt);
+  if(inp.throttle && !inp.brake) c.vel.addScaledVector(_f, CONFIG.engineAccel*(c.spdMul||1)*dt);
   if(inp.brake){
     if(fwdSpeed>0.6) c.vel.addScaledVector(_f, -CONFIG.brakeAccel*dt);
     else c.vel.addScaledVector(_f, -CONFIG.reverseAccel*dt);
@@ -1388,7 +1419,7 @@ function updateCar(c, inp, dt){
   if(c.boosting && !c.wasBoost && c.isPlayer){ audio && audio.boost(); } c.wasBoost=c.boosting;
 
   // speed clamp
-  const maxSpd=(c.boosting?CONFIG.boostTopSpeed:CONFIG.topSpeed)*(c.maxScale||1);
+  const maxSpd=(c.boosting?CONFIG.boostTopSpeed:CONFIG.topSpeed)*(c.maxScale||1)*(c.spdMul||1);
   const sp=c.vel.length(); if(sp>maxSpd) c.vel.multiplyScalar(maxSpd/sp);
 
   // steering (needs speed; reverses when reversing; stronger while drifting)
@@ -1402,7 +1433,7 @@ function updateCar(c, inp, dt){
   _f.set(Math.sin(c.heading), Math.cos(c.heading));
   const fd=c.vel.dot(_f);
   _l.copy(c.vel).addScaledVector(_f, -fd);          // lateral component
-  const grip=c.drifting?CONFIG.gripDrift:CONFIG.gripNormal;
+  const grip=(c.drifting?CONFIG.gripDrift:CONFIG.gripNormal)*(c.gripMul||1);
   _l.multiplyScalar(Math.exp(-grip*dt));            // frame-rate independent
   c.vel.copy(_f).multiplyScalar(fd).add(_l);
 
@@ -1607,16 +1638,23 @@ function flash(txt){ elFlash.textContent=txt; elFlash.classList.remove('show'); 
 function showBest(){ elBest.classList.remove('show'); void elBest.offsetWidth; elBest.classList.add('show'); }
 
 function startGame(){
+  if(!isOwned(selectedCar)){ renderShop(); return; }     // must own the selected car
   audio.start();
   if(currentTheme) playMusic(currentTheme.theme);
   placeGrid();
   cars.forEach(c=>{ if(c.rig&&c.rig.group) c.rig.group.visible=true; });   // showcase hid the AI cars
+  const m=carMul(selectedCar); player.spdMul=m.spd; player.gripMul=m.grip;  // chosen car's handling
   bestLap=null; raceTime=0; countdown=3.0; goTimer=0; lastFlash=-1; lastBeepN=99; state='countdown';
   elMenu.classList.add('hidden'); elResults.classList.add('hidden');
   skidPool.forEach(m=>m.visible=false);
   // snap camera behind player immediately
   _f.set(Math.sin(player.heading),Math.cos(player.heading));
   camera.position.set(player.pos.x-_f.x*CONFIG.camDist, CONFIG.camHeight, player.pos.y-_f.y*CONFIG.camDist);
+}
+function showMenu(){                                       // back to the garage/menu (shop)
+  state='menu'; menuT=0;
+  elResults.classList.add('hidden'); elMenu.classList.remove('hidden');
+  placeGrid(); renderCoins(); renderShop();               // reset car to the grid + refresh coins/unlock state
 }
 function finishRace(){
   player.finished=true; state='finished';
@@ -1917,16 +1955,13 @@ function init(){
   document.getElementById('againBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
   document.getElementById('nextBtn').addEventListener('click', e=>{ e.stopPropagation();
     currentTrack=(currentTrack+1)%TRACKS.length; selectTrack(currentTrack); startGame(); });
+  document.getElementById('garageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
   loadCoins(); renderCoins();
-  loadSelCar();
-  const carName=document.getElementById('carName');
-  const renderCar=()=>{ const c=CARS[selectedCar]; carName.textContent='🏎 '+c.name;
-    const ss=document.getElementById('statSpd'), sg=document.getElementById('statGrip');
-    if(ss) ss.style.width=c.spd+'%'; if(sg) sg.style.width=c.grip+'%'; };
-  const swapCar=(d)=>{ selectedCar=(selectedCar+d+CARS.length)%CARS.length; renderCar(); saveSelCar(); upgradeCars(); };
+  loadSelCar(); loadOwned();
+  const swapCar=(d)=>{ selectedCar=(selectedCar+d+CARS.length)%CARS.length; renderShop(); saveSelCar(); upgradeCars(); };
   document.getElementById('carPrev').addEventListener('click', e=>{ e.stopPropagation(); swapCar(-1); });
   document.getElementById('carNext').addEventListener('click', e=>{ e.stopPropagation(); swapCar(1); });
-  renderCar();
+  renderShop();
   addEventListener('resize', onResize); onResize(); checkOrient();
   addEventListener('orientationchange', ()=>setTimeout(checkOrient,200));
 
