@@ -68,8 +68,9 @@
   .tog{ pointer-events:auto; padding:8px 16px; border-radius:20px; border:2px solid rgba(255,255,255,.20);
         background:rgba(30,16,42,.5); font-size:min(3vw,12px); font-weight:700; letter-spacing:.5px; cursor:pointer; transition:.12s; }
   .tog.on{ border-color:#7cc0ff; background:rgba(70,150,255,.32); box-shadow:0 4px 16px rgba(70,150,255,.35); }
-  #sndRow{ display:flex; gap:10px; align-items:center; justify-content:center; margin-top:10px; }
-  #volSlider{ pointer-events:auto; width:min(46vw,200px); accent-color:#ff8a3c; cursor:pointer; }
+  #sndRow,#musRow{ display:flex; gap:10px; align-items:center; justify-content:center; margin-top:8px; }
+  #volSlider,#musSlider{ pointer-events:auto; width:min(46vw,200px); accent-color:#ff8a3c; cursor:pointer; }
+  #musSlider{ accent-color:#7cc0ff; }
   .cta{ margin-top:30px; font-size:min(6vw,26px); font-weight:900; padding:16px 34px; border-radius:40px;
         background:linear-gradient(90deg,#ff5a3c,#ffd23b); color:var(--ink);
         box-shadow:0 10px 30px rgba(255,90,60,.45); animation:bob 1.4s ease-in-out infinite; }
@@ -174,7 +175,11 @@
   </div>
   <div id="sndRow">
     <div class="tog" id="muteBtn">🔊</div>
-    <input id="volSlider" type="range" min="0" max="100" value="55" aria-label="volume">
+    <input id="volSlider" type="range" min="0" max="100" value="55" aria-label="sfx volume">
+  </div>
+  <div id="musRow">
+    <div class="tog" id="musMuteBtn">🎵</div>
+    <input id="musSlider" type="range" min="0" max="100" value="40" aria-label="music volume">
   </div>
   <div class="cta" id="startBtn">TAP TO RACE</div>
   <div class="keys" id="keysHint">
@@ -315,6 +320,23 @@ let coins = 0;                                           // reward currency (per
 function loadCoins(){ try{ coins=parseInt(localStorage.getItem('sd_coins'))||0; }catch(e){ coins=0; } }
 function saveCoins(){ try{ localStorage.setItem('sd_coins', coins); }catch(e){} }
 function renderCoins(){ const b=document.getElementById('coinBadge'); if(b) b.textContent='🪙 '+coins; }
+// --- per-environment background music: O'Neil Beats (tagged) streamed from the catalog CDN, looped ---
+const MUSIC={
+  city:'https://storage.googleapis.com/oneilbeats-media/beats/1780005644046_One_Ill_Beat-TAGGED.mp3',
+  coast:'https://storage.googleapis.com/oneilbeats-media/beats/1778803850820_Piel_Canela-TAGGED.mp3',
+  docks:'https://storage.googleapis.com/oneilbeats-media/beats/1779232334914_El_Bueno__El_Malo___El_Feo-TAGGED.mp3',
+  desert:'https://storage.googleapis.com/oneilbeats-media/beats/1779375765913_Tormenta_en_la_Pista-TAGGED.mp3',
+  forest:'https://storage.googleapis.com/oneilbeats-media/beats/1778911511289_My_Candlelight-TAGGED.mp3',
+};
+let musicVolume=0.4, musicMuted=false, bgMusic=null, musicTheme=null;
+function applyMusicVol(){ if(bgMusic) bgMusic.volume = musicMuted?0:musicVolume; }
+function playMusic(theme){
+  if(!MUSIC[theme]) return;
+  if(!bgMusic){ bgMusic=new Audio(); bgMusic.loop=true; bgMusic.preload='auto'; }
+  if(musicTheme!==theme){ musicTheme=theme; bgMusic.src=MUSIC[theme]; }
+  applyMusicVol();
+  if(!musicMuted){ try{ const p=bgMusic.play(); if(p&&p.catch) p.catch(()=>{}); }catch(e){} }
+}
 let rainSys = null, rainGeo = null, rainPos = null, rainData = null;  // camera-following rain streaks
 
 /* =========================================================================
@@ -1450,6 +1472,7 @@ function showBest(){ elBest.classList.remove('show'); void elBest.offsetWidth; e
 
 function startGame(){
   audio.start();
+  if(currentTheme) playMusic(currentTheme.theme);
   placeGrid();
   bestLap=null; raceTime=0; countdown=3.0; goTimer=0; lastFlash=-1; lastBeepN=99; state='countdown';
   elMenu.classList.add('hidden'); elResults.classList.add('hidden');
@@ -1680,6 +1703,7 @@ function selectTrack(idx){
   camera.lookAt(player.pos.x,1,player.pos.y);
   document.querySelectorAll('.trackBtn').forEach((b,i)=>b.classList.toggle('sel', i===idx));
   const sub=document.querySelector('#menu .sub'); if(sub) sub.textContent=TRACKS[idx].sub;
+  if(currentTheme) playMusic(currentTheme.theme);   // switch background beat per environment
 }
 function init(){
   if(showTouch) document.body.classList.add('touch');
@@ -1738,6 +1762,12 @@ function init(){
   volSlider.addEventListener('pointerdown', e=>e.stopPropagation());
   muteBtn.addEventListener('click', e=>{ e.stopPropagation(); muted=!muted; applyVol(); });
   applyVol();
+  const musSlider=document.getElementById('musSlider'), musMuteBtn=document.getElementById('musMuteBtn');
+  const applyMus=()=>{ musMuteBtn.textContent=(musicMuted||musicVolume<=0)?'🔈':'🎵'; musMuteBtn.classList.toggle('on',!musicMuted&&musicVolume>0); applyMusicVol(); };
+  ['input','change'].forEach(ev=> musSlider.addEventListener(ev, e=>{ e.stopPropagation(); musicVolume=(+musSlider.value)/100; musicMuted=false; applyMus(); if(currentTheme) playMusic(currentTheme.theme); }));
+  musSlider.addEventListener('pointerdown', e=>e.stopPropagation());
+  musMuteBtn.addEventListener('click', e=>{ e.stopPropagation(); musicMuted=!musicMuted; applyMus(); if(!musicMuted && currentTheme) playMusic(currentTheme.theme); });
+  applyMus();
   document.getElementById('menu').addEventListener('click', e=>{ if(state==='menu') startGame(); });
   document.getElementById('againBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
   document.getElementById('nextBtn').addEventListener('click', e=>{ e.stopPropagation();
