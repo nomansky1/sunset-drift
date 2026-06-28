@@ -356,6 +356,7 @@ let joyX = 0;   // analog steering from the on-screen joystick (-1..1; + = left,
 // scratch
 const _v = new THREE.Vector2(), _f = new THREE.Vector2(), _l = new THREE.Vector2(), _r = new THREE.Vector2();
 const _cd = new THREE.Vector3(), _cl = new THREE.Vector3();   // camera scratch (no per-frame allocs)
+const _UP = new THREE.Vector3(0,1,0);
 let camShake = 0;                       // decaying camera-shake impulse
 let composer = null, bloomPass = null, cinePass = null;  // post-processing (bloom + cinematic grade/blur)
 let nightMode = false, rainOn = false, lowQuality = false; // weather / time-of-day / perf toggles
@@ -507,6 +508,9 @@ class AudioEngine {
 function angleDiff(a,b){ let d=a-b; while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI; return d; }
 function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
 function lerp(a,b,t){ return a+(b-a)*t; }
+// road heading (radians) at the nearest track point — used to orient buildings/props to the street
+function roadAngleAt(x,z){ let best=0,bd=Infinity; for(let i=0;i<SAMPLES;i+=6){ const p=samplePts[i]; const dx=p.x-x,dz=p.y-z,d=dx*dx+dz*dz; if(d<bd){bd=d;best=i;} }
+  const t=sampleTan[best]; return Math.atan2(t.x,t.y); }
 
 // nearest sample index to a world position, searching a window around prev
 function nearest(pos, prev){
@@ -772,8 +776,10 @@ function buildCity(rng){
     const towerH=4 + downtown*52 + rng()*rng()*40;
     const fi = downtown>0.5 ? (rng()>0.5?1:4) : Math.floor(rng()*TYPES.length); // downtown = glass/dark towers
     const si = Math.floor(rng()*storeTex.length), tint=0.62+rng()*0.38;
-    const baseMtx=new THREE.Matrix4().makeScale(fw,baseH,fd); baseMtx.setPosition(x,0,z); stores[si].push({mtx:baseMtx,tint});
-    const towerMtx=new THREE.Matrix4().makeScale(fw*0.97,towerH,fd*0.97); towerMtx.setPosition(x,baseH,z); towers[fi].push({mtx:towerMtx,tint});
+    const ang = roadAngleAt(x,z) + (rng()<0.5?0:Math.PI/2) + (rng()-0.5)*0.12;   // face the street (along or across), slight jitter
+    const qb=new THREE.Quaternion().setFromAxisAngle(_UP, ang);
+    const baseMtx=new THREE.Matrix4().compose(new THREE.Vector3(x,0,z), qb, new THREE.Vector3(fw,baseH,fd)); stores[si].push({mtx:baseMtx,tint});
+    const towerMtx=new THREE.Matrix4().compose(new THREE.Vector3(x,baseH,z), qb, new THREE.Vector3(fw*0.97,towerH,fd*0.97)); towers[fi].push({mtx:towerMtx,tint});
     if(towerH>26 && rng()>0.55) waterTowers.push({x,z,top:baseH+towerH});
     if(rng()>0.86) billboards.push({x,z,y:baseH+Math.min(towerH,30)*0.7,fw,fd});
   }
@@ -830,6 +836,21 @@ function scatterProps(){ const rng=mulberry32(7777);
   else if(th==='desert') buildDesert(rng);
   else if(th==='forest') buildForest(rng);
   else { buildCity(rng); buildStreetFurniture(rng); }
+  buildRoadside(rng);                                  // cones + roadside markers on EVERY track
+}
+// roadside racing/street elements: traffic cones just past the barrier on both edges
+function buildRoadside(rng){
+  const off=CONFIG.roadHalfWidth+1.25, list=[], _m=new THREE.Matrix4(), q=new THREE.Quaternion(), _p=new THREE.Vector3(), _s=new THREE.Vector3();
+  for(let i=0;i<SAMPLES;i+=12){ if(rng()<0.45) continue; const p=samplePts[i], n=sampleNorm[i], side=((i/12)%2)?1:-1;
+    const x=p.x+n.x*off*side, z=p.y+n.y*off*side; list.push({x,z,y:terrainHeight(x,z),r:rng()*6.283}); }
+  if(!list.length) return;
+  // body (orange) + white reflective band as two instanced cones
+  const bodyGeo=new THREE.ConeGeometry(0.34,1.0,12); bodyGeo.translate(0,0.5,0);
+  const bandGeo=new THREE.ConeGeometry(0.26,0.22,12); bandGeo.translate(0,0.62,0);
+  const body=new THREE.InstancedMesh(bodyGeo, new THREE.MeshStandardMaterial({color:0xff6a1a, roughness:0.55, emissive:0xff6a1a, emissiveIntensity:nightMode?0.4:0.05}), list.length);
+  const band=new THREE.InstancedMesh(bandGeo, new THREE.MeshStandardMaterial({color:0xf0f0f0, roughness:0.6}), list.length);
+  list.forEach((c,k)=>{ q.setFromAxisAngle(_UP,c.r); _p.set(c.x,c.y,c.z); _s.set(1,1,1); _m.compose(_p,q,_s); body.setMatrixAt(k,_m); band.setMatrixAt(k,_m); });
+  body.instanceMatrix.needsUpdate=band.instanceMatrix.needsUpdate=true; body.castShadow=!isTouch; scene.add(body); scene.add(band);
 }
 // simple instanced block buildings (reused by coast/docks themes)
 function buildBlockBuildings(rng, palette, densityPct, maxH){
