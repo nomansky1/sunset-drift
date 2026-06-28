@@ -128,6 +128,17 @@
   #resStats{ font-size:min(4.6vw,20px); line-height:1.8; margin-top:6px; }
   #resStats b{ color:#fff; }
   #resReward{ font-size:min(5.5vw,24px); font-weight:800; color:#ffd23b; margin-top:10px; min-height:1.2em; text-shadow:0 2px 10px rgba(0,0,0,.5); }
+  #ctaRow{ display:flex; gap:10px; align-items:center; }
+  .cta.champ{ margin-top:0; font-size:min(4.4vw,18px); padding:14px 20px; background:linear-gradient(95deg,#7a2bd6,#c44be0); color:#fff;
+              box-shadow:0 8px 24px rgba(150,60,220,.45); border:none; animation:none; }
+  #champRound{ font-size:min(4.6vw,20px); font-weight:800; letter-spacing:2px; color:#ffd9a0; margin:8px 0 16px; }
+  #champTable{ width:min(86vw,420px); display:flex; flex-direction:column; gap:7px; }
+  .champRow{ display:flex; align-items:center; gap:12px; padding:10px 16px; border-radius:12px; background:rgba(255,255,255,.07);
+             border:1px solid rgba(255,255,255,.1); font-weight:800; }
+  .champRow .pos{ width:24px; font-size:16px; color:#bdbcca; text-align:left; }
+  .champRow .nm{ flex:1; text-align:left; letter-spacing:.5px; }
+  .champRow .pts{ color:#ffd23b; font-size:17px; }
+  .champRow.you{ background:linear-gradient(90deg,rgba(255,120,60,.3),rgba(120,40,20,.35)); border-color:rgba(255,210,90,.5); }
   #resBtnRow{ display:flex; gap:12px; margin-top:14px; }
   .cta2{ pointer-events:auto; font-size:min(4.2vw,18px); font-weight:800; padding:11px 24px; border-radius:30px;
          background:rgba(255,255,255,.12); color:#fff; border:2px solid rgba(255,255,255,.25); box-shadow:none; animation:none; cursor:pointer; }
@@ -244,7 +255,7 @@
         <input id="musSlider" type="range" min="0" max="100" value="40" aria-label="music volume">
       </div>
     </div>
-    <div class="cta" id="startBtn">▶&nbsp; RACE</div>
+    <div id="ctaRow"><div class="cta" id="startBtn">▶&nbsp; RACE</div><div class="cta cta2 champ" id="champBtn">🏆&nbsp; CUP</div></div>
     <div class="keys" id="keysHint">
       <span class="dk"><b>Arrows / WASD</b> drive &nbsp;•&nbsp; <b>Space</b> drift &nbsp;•&nbsp; <b>Shift</b> boost &nbsp;•&nbsp; <b>Esc</b> pause</span>
     </div>
@@ -259,6 +270,14 @@
   <div id="resReward"></div>
   <div class="cta" id="nextBtn">NEXT RACE →</div>
   <div id="resBtnRow"><div class="cta cta2" id="againBtn">RETRY</div><div class="cta cta2" id="garageBtn">🏠 GARAGE</div></div>
+</div>
+
+<!-- championship standings -->
+<div id="champ" class="overlay hidden">
+  <div class="title" id="champTitle">🏆 CHAMPIONSHIP</div>
+  <div id="champRound">ROUND 1 / 5</div>
+  <div id="champTable"></div>
+  <div class="cta" id="champNext">NEXT ROUND →</div>
 </div>
 
 <!-- rotate hint -->
@@ -392,6 +411,9 @@ const TRACKS=[
 ];
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99, menuT = 0;
+let champ = { active:false, order:[0,3,2,4,1], round:0, points:[] };   // championship: track sequence + points per car
+const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
+const CHAMP_PTS=[10,6,4,2,1,1];                                        // points by finishing rank
 let bestLap = null;
 const isTouch = matchMedia('(hover:none) and (pointer:coarse)').matches;
 const showTouch = isTouch || window.innerWidth < 820;
@@ -1652,15 +1674,39 @@ function startGame(){
   camera.position.set(player.pos.x-_f.x*CONFIG.camDist, CONFIG.camHeight, player.pos.y-_f.y*CONFIG.camDist);
 }
 function showMenu(){                                       // back to the garage/menu (shop)
-  state='menu'; menuT=0;
-  elResults.classList.add('hidden'); elMenu.classList.remove('hidden');
+  state='menu'; menuT=0; champ.active=false;
+  elResults.classList.add('hidden'); document.getElementById('champ').classList.add('hidden'); elMenu.classList.remove('hidden');
   placeGrid(); renderCoins(); renderShop();               // reset car to the grid + refresh coins/unlock state
+}
+function startChampionship(){
+  if(!isOwned(selectedCar)){ renderShop(); return; }
+  champ.active=true; champ.round=0; champ.points=cars.map(()=>0);
+  currentTrack=champ.order[0]; selectTrack(currentTrack); startGame();
+}
+function showStandings(){
+  const N=champ.order.length, done=champ.round>=N;
+  cars.forEach((c,i)=>{ champ.points[i]=(champ.points[i]||0)+(CHAMP_PTS[rankOf(c)-1]||0); });   // award this round
+  document.getElementById('champTitle').textContent = done?'🏆 CHAMPIONSHIP WON?' : '🏆 CHAMPIONSHIP';
+  const order=cars.map((c,i)=>({i,pts:champ.points[i]})).sort((a,b)=>b.pts-a.pts);
+  const myPos=order.findIndex(o=>o.i===0)+1;
+  document.getElementById('champRound').textContent = done ? ('FINAL · YOU FINISHED '+ordinal(myPos)) : ('ROUND '+champ.round+' / '+N+' DONE');
+  if(done) document.getElementById('champTitle').textContent = myPos===1?'🏆 CHAMPION!' : '🏁 CHAMPIONSHIP OVER';
+  const tbl=document.getElementById('champTable'); tbl.innerHTML='';
+  order.forEach((o,k)=>{ const row=document.createElement('div'); row.className='champRow'+(o.i===0?' you':'');
+    row.innerHTML='<div class="pos">'+(k+1)+'</div><div class="nm">'+(RACER_NAMES[o.i]||('CPU'+o.i))+'</div><div class="pts">'+o.pts+' pts</div>';
+    tbl.appendChild(row); });
+  const nb=document.getElementById('champNext');
+  if(done){ const bonus=[700,350,180,80][myPos-1]||50; coins+=bonus; saveCoins(); renderCoins();
+    nb.textContent='CLAIM '+bonus+' 🪙  ·  FINISH'; champ.active=false; }
+  else nb.textContent='NEXT: '+TRACKS[champ.order[champ.round]].name+' →';
+  document.getElementById('champ').classList.remove('hidden');
 }
 function finishRace(){
   player.finished=true; state='finished';
   const r=rankOf(player), won=r===1;
   const reward=([120,70,45,25][r-1]||15) + Math.max(0, Math.round((40-raceTime)*2));   // place + speed bonus
   coins+=reward; saveCoins(); renderCoins();
+  if(champ.active){ champ.round++; showStandings(); if(audio&&audio.ok) audio.update(0,0,false); return; }   // championship -> standings
   document.getElementById('resTitle').textContent = won?'🏆 YOU WIN!':'FINISH!';
   document.getElementById('resPos').textContent=ordinal(r);
   document.getElementById('resStats').innerHTML =
@@ -1930,7 +1976,11 @@ function init(){
   camera.lookAt(player.pos.x, 1, player.pos.y);
 
   bindKeys(); bindTouch();
-  document.getElementById('startBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
+  document.getElementById('startBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false; startGame(); });
+  document.getElementById('champBtn').addEventListener('click', e=>{ e.stopPropagation(); startChampionship(); });
+  document.getElementById('champNext').addEventListener('click', e=>{ e.stopPropagation();
+    document.getElementById('champ').classList.add('hidden');
+    if(champ.active){ currentTrack=champ.order[champ.round]; selectTrack(currentTrack); startGame(); } else showMenu(); });
   document.querySelectorAll('.trackBtn').forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); if(state==='menu') selectTrack(+b.dataset.i); }));
   const togNight=document.getElementById('togNight'), togRain=document.getElementById('togRain');
   togNight.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return; nightMode=!nightMode; togNight.classList.toggle('on',nightMode); selectTrack(currentTrack); });
@@ -1951,9 +2001,9 @@ function init(){
   musSlider.addEventListener('pointerdown', e=>e.stopPropagation());
   musMuteBtn.addEventListener('click', e=>{ e.stopPropagation(); musicMuted=!musicMuted; applyMus(); if(!musicMuted && currentTheme) playMusic(currentTheme.theme); });
   applyMus();
-  document.getElementById('menu').addEventListener('click', e=>{ if(state==='menu') startGame(); });
-  document.getElementById('againBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
-  document.getElementById('nextBtn').addEventListener('click', e=>{ e.stopPropagation();
+  document.getElementById('menu').addEventListener('click', e=>{ if(state==='menu'){ champ.active=false; startGame(); } });
+  document.getElementById('againBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false; startGame(); });
+  document.getElementById('nextBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false;
     currentTrack=(currentTrack+1)%TRACKS.length; selectTrack(currentTrack); startGame(); });
   document.getElementById('garageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
   loadCoins(); renderCoins();
