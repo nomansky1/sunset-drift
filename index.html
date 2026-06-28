@@ -84,7 +84,14 @@
   .trackBtn.sel{ border-color:#ffd23b; background:linear-gradient(165deg, rgba(255,120,60,.4), rgba(120,40,20,.5));
                  box-shadow:0 8px 26px rgba(255,90,60,.45), inset 0 0 0 1px rgba(255,210,90,.5); transform:translateY(-4px); }
   .trackBtn.sel::after{ content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,#ff5a3c,#ffd23b); }
-  #settings{ margin-top:18px; padding:13px 18px; border-radius:18px; background:rgba(12,7,20,.5);
+  #carRow{ display:flex; gap:14px; align-items:center; justify-content:center; margin-top:16px; }
+  .carArrow{ pointer-events:auto; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+             font-size:16px; background:rgba(255,255,255,.08); border:1.5px solid rgba(255,255,255,.2); cursor:pointer; transition:.14s; }
+  .carArrow:hover{ background:rgba(255,150,60,.32); transform:scale(1.08); }
+  #carName{ min-width:150px; font-size:min(4.4vw,19px); font-weight:900; letter-spacing:2px; color:#ffd23b;
+            background:linear-gradient(160deg,rgba(40,22,12,.7),rgba(12,7,20,.6)); padding:10px 18px; border-radius:14px;
+            border:1px solid rgba(255,210,59,.35); box-shadow:0 4px 16px rgba(0,0,0,.35); }
+  #settings{ margin-top:16px; padding:13px 18px; border-radius:18px; background:rgba(12,7,20,.5);
              -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); box-shadow:0 8px 30px rgba(0,0,0,.35); }
   #togRow{ display:flex; gap:9px; justify-content:center; }
   .tog{ pointer-events:auto; padding:8px 15px; border-radius:14px; border:1.5px solid rgba(255,255,255,.16);
@@ -190,6 +197,11 @@
     <div class="trackBtn" data-i="2"><div class="ic">🏗️</div><b>THE DOCKS</b><span>Industrial</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
     <div class="trackBtn" data-i="3"><div class="ic">🏜️</div><b>DESERT RUN</b><span>Red Canyon</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
     <div class="trackBtn" data-i="4"><div class="ic">🌲</div><b>PINE PASS</b><span>Forest</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
+  </div>
+  <div id="carRow">
+    <div class="carArrow" id="carPrev">◀</div>
+    <div id="carName">🏎 DRIFTER</div>
+    <div class="carArrow" id="carNext">▶</div>
   </div>
   <div id="settings">
     <div id="togRow">
@@ -304,6 +316,13 @@ let dust, sparks, tireSmoke, skidPool = [], skidCursor = 0, skidShared;
 let audio;
 let sunLight=null, sunDirV=null, glowTex=null;
 let carBodyRaw=null, carWheelRaw=null, carReady=false, carYaw=0;   // realistic GLB car (body + the pack's own wheels)
+// player-selectable fleet (all CC0, generic/non-branded): the original Drifter + 2 Quaternius sports cars
+const CARS=[ {name:'DRIFTER', kind:'doge'},
+             {name:'COUPE',   kind:'glb', raw:'sport', yaw:Math.PI},
+             {name:'EXOTIC',  kind:'glb', raw:'super', yaw:Math.PI} ];
+let fleetRaw={}, selectedCar=0;
+function loadSelCar(){ try{ selectedCar=Math.min(CARS.length-1, Math.max(0, parseInt(localStorage.getItem('sd_car'))||0)); }catch(e){ selectedCar=0; } }
+function saveSelCar(){ try{ localStorage.setItem('sd_car', selectedCar); }catch(e){} }
 let WORLD=null, currentTrack=0, currentTheme=null;                 // selectable themed tracks (rebuildable world)
 let terrainNoise=null, terrainAmp=0, terrainBiome='flat';         // procedural terrain (elevated nature themes)
 const TERRAIN={ coast:{amp:15,biome:'coast'}, desert:{amp:44,biome:'desert'}, forest:{amp:66,biome:'forest'} };
@@ -1147,6 +1166,10 @@ function loadCarModels(){
     L.load('models/car-wheel.glb', gw=>{ carWheelRaw=gw.scene; carReady=true; if(cars&&cars.length) upgradeCars(); },
       undefined, ()=>{ carReady=true; if(cars&&cars.length) upgradeCars(); });   // body-only if wheels fail
   }, undefined, ()=>{}); }catch(e){}
+  // fleet sports cars
+  [['sport','models/cc0/cars/sportscar.glb'],['super','models/cc0/cars/supercar.glb']].forEach(([k,f])=>{
+    try{ L.load(f, g=>{ fleetRaw[k]=g.scene; if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
+  });
 }
 // wheel layout taken straight from the car pack's own scene (mapped to +Z = forward)
 const CAR_WHEELS=[
@@ -1157,32 +1180,46 @@ const CAR_WHEELS=[
 ];
 function upgradeCars(){
   if(!carBodyRaw) return;
-  cars.forEach(c=>{
+  cars.forEach((c,ci)=>{
     const rig=c.rig;
-    [...rig.group.children].forEach(o=> rig.group.remove(o));   // wipe the box placeholder
-    const asm=new THREE.Group();
-    // body with per-car glossy paint
-    const chassis=new THREE.Group();
-    const body=carBodyRaw.clone();
-    body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false;
-      if(o.material){ if(o.material.name==='body'){ o.material=o.material.clone(); o.material.color.set(c.color); o.material.metalness=0.65; o.material.roughness=0.12; } o.material.envMapIntensity=2.0; } } });
-    chassis.add(body); asm.add(chassis);
-    // the pack's own wheels at the artist's exact positions (spin via rotation.x, steer fronts via rotation.y)
-    const wheels=[], front=[];
-    CAR_WHEELS.forEach(wp=>{ const wg=new THREE.Group(); wg.position.set(wp.x,wp.y,wp.z); wg.rotation.order='YXZ';
-      if(carWheelRaw){ const wm=carWheelRaw.clone(); wm.traverse(o=>{ if(o.isMesh){ o.castShadow=true; if(o.material) o.material.envMapIntensity=1.2; } }); wg.add(wm); }
-      else { wg.add(new THREE.Mesh(new THREE.CylinderGeometry(0.37,0.37,0.34,16).rotateZ(Math.PI/2), new THREE.MeshStandardMaterial({color:0x101013,roughness:.85}))); }
-      asm.add(wg); wheels.push(wg); if(wp.front) front.push(wg); });
-    // centre + sit on ground + scale the WHOLE car as one unit -> body & wheels keep the artist's proportions
-    const bb=new THREE.Box3().setFromObject(asm), sz=new THREE.Vector3(), ctr=new THREE.Vector3(); bb.getSize(sz); bb.getCenter(ctr);
-    asm.position.set(-ctr.x, -bb.min.y, -ctr.z);
-    const sc=4.5/Math.max(sz.x,sz.z,0.001);
-    const scaleG=new THREE.Group(); scaleG.scale.setScalar(sc); scaleG.rotation.y=carYaw; scaleG.add(asm);
-    rig.group.add(scaleG);
-    rig.chassis=chassis; rig.wheels=wheels; rig.front=front; rig.spinAcc=0;
+    [...rig.group.children].forEach(o=> rig.group.remove(o));   // wipe the placeholder / old model
+    const def = c.isPlayer ? CARS[selectedCar] : CARS[(ci*2+1)%CARS.length];   // AI variety
+    if(def.kind==='glb' && fleetRaw[def.raw]) buildFleetCar(rig, fleetRaw[def.raw], def.yaw||0);
+    else buildDogeCar(rig, c.color);
     if(rig.flames) rig.flames.forEach(f=>rig.group.add(f));   // re-attach exhaust flames (group was wiped above)
     if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
   });
+}
+function buildDogeCar(rig, color){
+  const asm=new THREE.Group();
+  const chassis=new THREE.Group();
+  const body=carBodyRaw.clone();
+  body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false;
+    if(o.material){ if(o.material.name==='body'){ o.material=o.material.clone(); o.material.color.set(color); o.material.metalness=0.65; o.material.roughness=0.12; } o.material.envMapIntensity=2.0; } } });
+  chassis.add(body); asm.add(chassis);
+  const wheels=[], front=[];
+  CAR_WHEELS.forEach(wp=>{ const wg=new THREE.Group(); wg.position.set(wp.x,wp.y,wp.z); wg.rotation.order='YXZ';
+    if(carWheelRaw){ const wm=carWheelRaw.clone(); wm.traverse(o=>{ if(o.isMesh){ o.castShadow=true; if(o.material) o.material.envMapIntensity=1.2; } }); wg.add(wm); }
+    else { wg.add(new THREE.Mesh(new THREE.CylinderGeometry(0.37,0.37,0.34,16).rotateZ(Math.PI/2), new THREE.MeshStandardMaterial({color:0x101013,roughness:.85}))); }
+    asm.add(wg); wheels.push(wg); if(wp.front) front.push(wg); });
+  const bb=new THREE.Box3().setFromObject(asm), sz=new THREE.Vector3(), ctr=new THREE.Vector3(); bb.getSize(sz); bb.getCenter(ctr);
+  asm.position.set(-ctr.x, -bb.min.y, -ctr.z);
+  const sc=4.5/Math.max(sz.x,sz.z,0.001);
+  const scaleG=new THREE.Group(); scaleG.scale.setScalar(sc); scaleG.rotation.y=carYaw; scaleG.add(asm);
+  rig.group.add(scaleG);
+  rig.chassis=chassis; rig.wheels=wheels; rig.front=front; rig.spinAcc=0;
+}
+function buildFleetCar(rig, raw, yaw){   // whole-car GLB (no separate wheels) — normalized + glossy
+  const chassis=new THREE.Group();
+  const body=raw.clone();
+  body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false; if(o.material){ o.material=o.material.clone(); o.material.envMapIntensity=1.7; if(o.material.roughness!=null) o.material.roughness=Math.min(o.material.roughness,0.35); } } });
+  chassis.add(body);
+  const bb=new THREE.Box3().setFromObject(chassis), sz=new THREE.Vector3(), ctr=new THREE.Vector3(); bb.getSize(sz); bb.getCenter(ctr);
+  chassis.position.set(-ctr.x, -bb.min.y, -ctr.z);
+  const sc=4.6/Math.max(sz.x,sz.z,0.001);
+  const scaleG=new THREE.Group(); scaleG.scale.setScalar(sc); scaleG.rotation.y=yaw; scaleG.add(chassis);
+  rig.group.add(scaleG);
+  rig.chassis=chassis; rig.wheels=[]; rig.front=[]; rig.spinAcc=0;
 }
 
 /* ---- real CC0 props (Quaternius / Kenney low-poly GLBs) instanced onto the terrain ---- */
@@ -1804,6 +1841,13 @@ function init(){
   document.getElementById('nextBtn').addEventListener('click', e=>{ e.stopPropagation();
     currentTrack=(currentTrack+1)%TRACKS.length; selectTrack(currentTrack); startGame(); });
   loadCoins(); renderCoins();
+  loadSelCar();
+  const carName=document.getElementById('carName');
+  const renderCar=()=>{ carName.textContent='🏎 '+CARS[selectedCar].name; };
+  const swapCar=(d)=>{ selectedCar=(selectedCar+d+CARS.length)%CARS.length; renderCar(); saveSelCar(); upgradeCars(); };
+  document.getElementById('carPrev').addEventListener('click', e=>{ e.stopPropagation(); swapCar(-1); });
+  document.getElementById('carNext').addEventListener('click', e=>{ e.stopPropagation(); swapCar(1); });
+  renderCar();
   addEventListener('resize', onResize); onResize(); checkOrient();
   addEventListener('orientationchange', ()=>setTimeout(checkOrient,200));
 

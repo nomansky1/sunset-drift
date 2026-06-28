@@ -2,8 +2,11 @@
 
 All third-party assets used here are licensed for commercial use.
 
-- **Car model** — "Car-Demo" by **Manik Sharma**, MIT License (use/modify/sell permitted).
-  The car body was optimized for web (textures resized + WebP, geometry pruned) via gltf-transform.
+- **Car models**:
+  - "Car-Demo" (the DRIFTER) by **Manik Sharma**, MIT License (use/modify/sell permitted).
+  - Sports cars (COUPE, EXOTIC) by **Quaternius**, CC0 — generic/original designs, NOT modeled after
+    any real manufacturer (no branded/trademarked vehicles are used, since the game is sold commercially).
+  All car models were optimized for web (textures resized + WebP, geometry pruned) via gltf-transform.
 - **Sky / reflection HDRI** — "Venice Sunset" from **Poly Haven**, CC0 (public domain).
 - **Road textures** — lane markings from the Godot "Road Generator" addon (TheDuckCow, MIT);
   asphalt surface-normal from **ambientCG** "Ground037", CC0.
