@@ -16,26 +16,35 @@
   /* ---------- HUD ---------- */
   #hud{ position:fixed; inset:0; pointer-events:none; z-index:5;
         font-weight:bold; text-shadow:0 2px 6px rgba(0,0,0,.55); }
-  .panel{ position:absolute; background:rgba(28,14,40,.42); border:1px solid rgba(255,255,255,.18);
-          border-radius:14px; backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
-  #lapBox{ top:env(safe-area-inset-top,10px); left:14px; padding:8px 14px; }
-  #lapBox .lap{ font-size:22px; letter-spacing:.5px; }
-  #lapBox .time{ font-size:15px; color:var(--accent2); }
-  #lapBox .best{ font-size:12px; opacity:.85; }
-  #posBox{ top:env(safe-area-inset-top,10px); left:50%; transform:translateX(-50%); padding:6px 16px; text-align:center; }
-  #posBox .p{ font-size:26px; line-height:1; } #posBox .s{ font-size:11px; opacity:.8; }
-  #mapBox{ top:env(safe-area-inset-top,10px); right:14px; padding:7px; }
-  #map{ display:block; border-radius:8px; }
+  .panel{ position:absolute; background:linear-gradient(160deg, rgba(32,17,46,.58), rgba(12,7,20,.52));
+          border:1px solid rgba(255,255,255,.13); border-radius:14px; box-shadow:0 6px 22px rgba(0,0,0,.42);
+          backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px); }
+  #lapBox{ top:env(safe-area-inset-top,10px); left:14px; padding:9px 16px 9px 19px; }
+  #lapBox::before{ content:''; position:absolute; left:0; top:9px; bottom:9px; width:4px; border-radius:3px; background:linear-gradient(180deg,#ff5a3c,#ffd23b); }
+  #lapBox .lap{ font-size:21px; letter-spacing:.5px; font-weight:900; }
+  #lapBox .time{ font-size:16px; color:#ffd23b; font-weight:900; }
+  #lapBox .best{ font-size:11px; opacity:.7; letter-spacing:.5px; }
+  #posBox{ top:env(safe-area-inset-top,10px); left:50%; transform:translateX(-50%); padding:7px 22px; text-align:center;
+           background:linear-gradient(160deg, rgba(255,120,50,.3), rgba(16,9,24,.62)); }
+  #posBox .p{ font-size:30px; line-height:1; font-weight:900;
+              background:linear-gradient(180deg,#fff,#ffd23b); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #posBox .s{ font-size:11px; opacity:.85; letter-spacing:1px; }
+  #mapBox{ top:env(safe-area-inset-top,10px); right:14px; padding:6px; }
+  #map{ display:block; border-radius:9px; }
   #speedBox{ position:absolute; bottom:calc(env(safe-area-inset-bottom,10px) + 2px); left:50%; transform:translateX(-50%);
              width:148px; height:148px; }
   #speedo{ display:block; width:148px; height:148px; }
-  #speedNum{ position:absolute; left:0; right:0; top:47%; transform:translateY(-50%); text-align:center;
-             font-size:40px; font-weight:900; line-height:1; text-shadow:0 2px 10px rgba(0,0,0,.7); }
-  #speedUnit{ position:absolute; left:0; right:0; top:63%; text-align:center; font-size:10px; letter-spacing:3px; opacity:.6; }
-  #boostWrap{ position:absolute; left:32px; right:32px; bottom:22px; height:6px; background:rgba(0,0,0,.45); border-radius:4px; overflow:hidden; }
-  #boostBar{ height:100%; width:100%; border-radius:4px;
-             background:linear-gradient(90deg,#ff5a3c,#ffd23b); transition:width .08s linear; }
-  #boostWrap.charging #boostBar{ background:linear-gradient(90deg,#3ca0ff,#7ce0ff); }
+  #speedNum{ position:absolute; left:0; right:0; top:46%; transform:translateY(-50%); text-align:center;
+             font-size:44px; font-weight:900; line-height:1; letter-spacing:-1px;
+             background:linear-gradient(180deg,#fff,#bfe0ff); -webkit-background-clip:text; background-clip:text; color:transparent;
+             filter:drop-shadow(0 2px 8px rgba(0,0,0,.6)); }
+  #speedUnit{ position:absolute; left:0; right:0; top:64%; text-align:center; font-size:10px; letter-spacing:3px; opacity:.55; }
+  #boostWrap{ position:absolute; left:28px; right:28px; bottom:23px; height:8px; background:rgba(0,0,0,.5);
+              border-radius:5px; overflow:hidden; box-shadow:inset 0 1px 2px rgba(0,0,0,.5); }
+  #boostWrap::after{ content:'BOOST'; position:absolute; left:50%; top:-15px; transform:translateX(-50%); font-size:8px; letter-spacing:3px; opacity:.55; font-weight:800; }
+  #boostBar{ height:100%; width:100%; border-radius:5px;
+             background:linear-gradient(90deg,#ff5a3c,#ffd23b); transition:width .08s linear; box-shadow:0 0 10px rgba(255,150,60,.6); }
+  #boostWrap.charging #boostBar{ background:linear-gradient(90deg,#3ca0ff,#7ce0ff); box-shadow:0 0 10px rgba(80,180,255,.6); }
 
   /* ---------- big center text (countdown / GO / NEW BEST) ---------- */
   #flash{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:6;
