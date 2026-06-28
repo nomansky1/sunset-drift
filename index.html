@@ -280,19 +280,19 @@ const TERRAIN={ coast:{amp:15,biome:'coast'}, desert:{amp:44,biome:'desert'}, fo
 const TRACKS=[
   { name:'DOWNTOWN', sub:'NEON CITY · STREET CIRCUIT', theme:'city', groundHex:'#33363d', fog:0xe6885f,
     sky:{top:0x3a2160,bot:0xff9a5a,sun:0xfff2c0}, sun:[-0.5,0.12,-0.85],
-    ctrl:[[-170,-130],[-40,-130],[20,-92],[80,-130],[170,-130],[176,0],[170,130],[20,130],[-60,166],[-150,130],[-180,0]] },
+    ctrl:[[-185,-125],[40,-125],[78,-150],[128,-150],[162,-120],[185,-55],[185,92],[120,135],[150,178],[15,170],[-115,160],[-185,88],[-185,-28]] },
   { name:'OCEAN DRIVE', sub:'SUNSET COAST · PALM SWEEP', theme:'coast', groundHex:'#cdab6e', fog:0xffc890,
     sky:{top:0x2a55a0,bot:0xffb878,sun:0xfff0c0}, sun:[0.45,0.10,-0.88],
-    ctrl:[[-185,10],[-120,-120],[10,-165],[140,-130],[205,-15],[170,95],[60,155],[-90,150],[-185,80]] },
+    ctrl:[[-198,-10],[-150,-145],[10,-170],[140,-145],[205,-55],[135,20],[205,95],[120,165],[-30,182],[-150,150],[-200,60]] },
   { name:'THE DOCKS', sub:'INDUSTRIAL · CARGO HAIRPINS', theme:'docks', groundHex:'#2c2e34', fog:0x8a8478,
     sky:{top:0x2a3038,bot:0x9a8a78,sun:0xe8e0d0}, sun:[-0.6,0.18,-0.72],
-    ctrl:[[-150,-120],[60,-150],[155,-88],[150,28],[48,56],[150,120],[15,165],[-150,135],[-185,10]] },
+    ctrl:[[-175,-110],[-10,-150],[130,-135],[180,-65],[118,-5],[185,55],[120,115],[170,170],[20,165],[-130,150],[-188,30]] },
   { name:'DESERT RUN', sub:'CANYON · RED ROCK', theme:'desert', groundHex:'#c9a060', fog:0xd9a878,
     sky:{top:0x3a78c0,bot:0xf0c090,sun:0xfff4d0}, sun:[0.3,0.16,-0.9],
-    ctrl:[[-175,-55],[-80,-150],[80,-160],[180,-75],[175,55],[120,140],[35,180],[-110,160],[-195,55]] },
+    ctrl:[[-180,-50],[-95,-155],[65,-168],[180,-95],[145,-20],[198,60],[105,150],[-25,178],[-135,150],[-198,40]] },
   { name:'PINE PASS', sub:'FOREST · MOUNTAIN TWISTS', theme:'forest', groundHex:'#3f5a34', fog:0x9ab0a0,
     sky:{top:0x2a6abf,bot:0xbfe0f0,sun:0xffffff}, sun:[-0.4,0.32,-0.7],
-    ctrl:[[-160,-100],[-45,-148],[45,-95],[125,-148],[188,-45],[105,20],[172,98],[72,152],[-65,138],[-138,178],[-196,60]] },
+    ctrl:[[-168,-90],[-60,-152],[60,-120],[125,-160],[190,-80],[120,-20],[180,60],[90,120],[150,172],[10,165],[-115,168],[-188,55]] },
 ];
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99;
@@ -787,7 +787,7 @@ function makeHazardTex(){
   if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
 }
 function buildBarriers(){
-  const at=CONFIG.roadHalfWidth+0.3, w=0.5, H=1.2, th=currentTheme?currentTheme.theme:'city';
+  const at=CONFIG.roadHalfWidth+0.3, w=0.45, H=0.62, th=currentTheme?currentTheme.theme:'city';  // low but noticeable
   const tex=makeHazardTex();
   const faceMat=new THREE.MeshStandardMaterial({map:tex, roughness:0.7, metalness:0.05, side:THREE.DoubleSide,
     emissive:0xffffff, emissiveMap:tex, emissiveIntensity:nightMode?0.5:0.0});  // glow a touch at night
