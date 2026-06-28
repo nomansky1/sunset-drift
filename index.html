@@ -318,8 +318,8 @@ let sunLight=null, sunDirV=null, glowTex=null;
 let carBodyRaw=null, carWheelRaw=null, carReady=false, carYaw=0;   // realistic GLB car (body + the pack's own wheels)
 // player-selectable fleet (all CC0, generic/non-branded): the original Drifter + 2 Quaternius sports cars
 const CARS=[ {name:'DRIFTER', kind:'doge'},
-             {name:'COUPE',   kind:'glb', raw:'sport', yaw:Math.PI},
-             {name:'EXOTIC',  kind:'glb', raw:'super', yaw:Math.PI} ];
+             {name:'COUPE',   kind:'glb', raw:'sport', yaw:0},   // Quaternius cars face +Z (= forward); no flip
+             {name:'EXOTIC',  kind:'glb', raw:'super', yaw:0} ];
 let fleetRaw={}, selectedCar=0;
 function loadSelCar(){ try{ selectedCar=Math.min(CARS.length-1, Math.max(0, parseInt(localStorage.getItem('sd_car'))||0)); }catch(e){ selectedCar=0; } }
 function saveSelCar(){ try{ localStorage.setItem('sd_car', selectedCar); }catch(e){} }
@@ -1085,7 +1085,7 @@ function captureEnv(){
     if(typeof cars!=='undefined' && cars) cars.forEach(c=>{ if(c.rig&&c.rig.group){ hidden.push([c.rig.group,c.rig.group.visible]); c.rig.group.visible=false; } });
     const rv = rainSys?rainSys.visible:false; if(rainSys) rainSys.visible=false;
     const pm=new THREE.PMREMGenerator(renderer);
-    const rt=pm.fromScene(scene, 0.16, 0.5, 2200);       // blur the capture (no blinding sun hotspot); far clears the 1400 sky sphere
+    const rt=pm.fromScene(scene, 0.04, 0.5, 2200);       // mild blur (PMREM sample cap); far clears the 1400 sky sphere
     if(capturedEnvRT && capturedEnvRT.dispose) capturedEnvRT.dispose();
     capturedEnvRT=rt; scene.environment=rt.texture; pm.dispose();
     hidden.forEach(([g,v])=>g.visible=v); if(rainSys) rainSys.visible=rv;
