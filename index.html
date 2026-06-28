@@ -497,7 +497,13 @@ const CARS=[ {name:'DRIFTER', kind:'doge',                spd:70,  grip:88, pric
              {name:'PICKUP',  kind:'glb', raw:'pickup', yaw:0, spd:74,  grip:84, price:350},
              {name:'COUPE',   kind:'glb', raw:'sport',  yaw:0, spd:86,  grip:74, price:450},
              {name:'SUV',     kind:'glb', raw:'suv',    yaw:0, spd:80,  grip:82, price:600},
-             {name:'EXOTIC',  kind:'glb', raw:'super',  yaw:0, spd:100, grip:64, price:900} ];
+             {name:'EXOTIC',  kind:'glb', raw:'super',  yaw:0, spd:100, grip:64, price:900},
+             {name:'CAB',         kind:'glb', raw:'taxi',     yaw:0, spd:76, grip:80, price:400},
+             {name:'RACER',       kind:'glb', raw:'racer',    yaw:0, spd:90, grip:73, price:750},
+             {name:'ROADSTER',    kind:'glb', raw:'roadster', yaw:0, spd:88, grip:76, price:850},
+             {name:'MUSCLE',      kind:'glb', raw:'muscle',   yaw:0, spd:94, grip:66, price:1100},
+             {name:'INTERCEPTOR', kind:'glb', raw:'police',   yaw:0, spd:86, grip:84, price:1300},
+             {name:'GT',          kind:'glb', raw:'racecar',  yaw:0, spd:98, grip:70, price:1600} ];
 let fleetRaw={}, selectedCar=0, ownedCars=[];
 function loadOwned(){ try{ const o=JSON.parse(localStorage.getItem('sd_owned')); ownedCars=Array.isArray(o)?o:[]; }catch(e){ ownedCars=[]; }
   for(let i=0;i<CARS.length;i++) if(ownedCars[i]===undefined) ownedCars[i]=(CARS[i].price===0); }
@@ -1534,7 +1540,9 @@ function loadCarModels(){
   }, undefined, ()=>{}); }catch(e){}
   // fleet sports cars
   [['sport','models/cc0/cars/sportscar.glb'],['super','models/cc0/cars/supercar.glb'],
-   ['hatch','models/cc0/cars/hatch.glb'],['suv','models/cc0/cars/suv.glb'],['pickup','models/cc0/cars/pickup.glb']].forEach(([k,f])=>{
+   ['hatch','models/cc0/cars/hatch.glb'],['suv','models/cc0/cars/suv.glb'],['pickup','models/cc0/cars/pickup.glb'],
+   ['racer','models/cc0/cars/racer.glb'],['racecar','models/cc0/cars/racecar.glb'],['muscle','models/cc0/cars/muscle.glb'],
+   ['roadster','models/cc0/cars/roadster.glb'],['police','models/cc0/cars/police.glb'],['taxi','models/cc0/cars/taxi.glb']].forEach(([k,f])=>{
     try{ L.load(f, g=>{ fleetRaw[k]=g.scene; if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
   });
 }
