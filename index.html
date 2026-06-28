@@ -192,23 +192,28 @@
   .pad{ position:fixed; bottom:calc(env(safe-area-inset-bottom,14px) + 14px); pointer-events:auto;
         display:flex; gap:14px; }
   #joy{ left:calc(env(safe-area-inset-left,0px) + 16px); }
-  #actions{ right:calc(env(safe-area-inset-right,0px) + 16px); display:grid;
-            grid-template-columns:74px 74px; grid-template-rows:74px 74px; gap:12px; }
-  .btn{ width:74px; height:74px; border-radius:50%; pointer-events:auto;
+  #actions{ right:calc(env(safe-area-inset-right,0px) + 16px); display:flex; align-items:flex-end; gap:16px; }
+  .btn{ width:78px; height:78px; border-radius:50%; pointer-events:auto;
         display:flex; align-items:center; justify-content:center; flex-direction:column;
         font-weight:900; font-size:15px; letter-spacing:.5px; color:#fff;
         background:rgba(40,22,55,.5); border:2px solid rgba(255,255,255,.32);
         text-shadow:0 1px 3px rgba(0,0,0,.6); transition:transform .05s, background .05s; }
-  .btn .ico{ font-size:26px; line-height:1; }
-  .btn.big{ width:88px; height:88px; }
+  .btn .ico{ font-size:27px; line-height:1; }
+  .btn.big{ width:96px; height:96px; font-size:16px; }
+  .btn.big .ico{ font-size:32px; }
   .btn:active,.btn.on{ transform:scale(.92); }
   #joy-base{ width:132px; height:132px; border-radius:50%; pointer-events:auto; position:relative;
              background:radial-gradient(circle at 50% 45%, rgba(255,255,255,.12), rgba(40,22,55,.5));
              border:2px solid rgba(255,255,255,.30); box-shadow:inset 0 0 20px rgba(0,0,0,.35); touch-action:none; }
+  #joy-base::before,#joy-base::after{ position:absolute; left:50%; transform:translateX(-50%); font-size:15px; font-weight:900; opacity:.65; pointer-events:none; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+  #joy-base::before{ content:'▲'; top:5px; color:#7effb0; }      /* up = accelerate */
+  #joy-base::after{ content:'▼'; bottom:5px; color:#ff9a9a; }    /* down = brake */
   #joy-knob{ width:62px; height:62px; border-radius:50%; position:absolute; left:50%; top:50%;
              margin:-31px 0 0 -31px; transform:translate(0,0); pointer-events:none;
              background:radial-gradient(circle at 40% 35%, #ffe2a0, #ff7a3c);
-             border:2px solid rgba(255,255,255,.6); box-shadow:0 4px 14px rgba(0,0,0,.45); }
+             border:2px solid rgba(255,255,255,.6); box-shadow:0 4px 14px rgba(0,0,0,.45); transition:background .08s; }
+  #joy-knob.gas{ background:radial-gradient(circle at 40% 35%, #c8ffd8, #36cc68); }
+  #joy-knob.brk{ background:radial-gradient(circle at 40% 35%, #ffd0d0, #e84d4d); }
   #btn-gas{ grid-column:2; grid-row:2; background:rgba(60,200,120,.42); border-color:rgba(150,255,200,.6); }
   #btn-gas.on{ background:rgba(60,220,130,.8); }
   #btn-brake{ grid-column:1; grid-row:2; background:rgba(230,70,70,.42); border-color:rgba(255,170,170,.6); }
@@ -217,6 +222,16 @@
   #btn-drift.on{ background:rgba(140,110,255,.85); }
   #btn-boost{ grid-column:2; grid-row:1; background:rgba(255,150,40,.45); border-color:rgba(255,210,150,.7); }
   #btn-boost.on{ background:rgba(255,170,60,.9); }
+
+  /* mobile HUD: shrink the big readouts so they don't dominate a small phone screen */
+  body.touch #speedBox{ transform:translateX(-50%) scale(.82); transform-origin:bottom center; }
+  body.touch #mapBox{ transform:scale(.84); transform-origin:top right; }
+  body.touch #lapBox .lap{ font-size:18px; }
+  body.touch #lapBox .time{ font-size:15px; }
+  body.touch #posBox{ padding:6px 18px; }
+  body.touch #posBox .p{ font-size:26px; }
+  body.touch #scoreBox{ font-size:18px; top:calc(env(safe-area-inset-top,10px) + 52px); }
+  body.touch #rivalTag{ top:calc(env(safe-area-inset-top,10px) + 102px); }
 
   /* rotate hint */
   #rotate{ position:fixed; inset:0; z-index:20; display:none; flex-direction:column; gap:18px;
@@ -253,9 +268,7 @@
   <div id="joy" class="pad"><div id="joy-base"><div id="joy-knob"></div></div></div>
   <div id="actions" class="pad">
     <div class="btn" id="btn-drift"><span class="ico">✦</span>DRIFT</div>
-    <div class="btn" id="btn-boost"><span class="ico">🔥</span>BOOST</div>
-    <div class="btn" id="btn-brake"><span class="ico">▼</span>BRAKE</div>
-    <div class="btn big" id="btn-gas"><span class="ico">▲</span>GAS</div>
+    <div class="btn big" id="btn-boost"><span class="ico">🔥</span>BOOST</div>
   </div>
 </div>
 
@@ -514,6 +527,7 @@ const showTouch = isTouch || window.innerWidth < 820;
 // input flags
 const keys = { up:false, down:false, left:false, right:false, space:false, shift:false };
 let joyX = 0;   // analog steering from the on-screen joystick (-1..1; + = left, matching the keys)
+let joyY = 0;   // analog throttle/brake from the joystick (+ = push up = accelerate, - = push down = brake)
 
 // scratch
 const _v = new THREE.Vector2(), _f = new THREE.Vector2(), _l = new THREE.Vector2(), _r = new THREE.Vector2();
@@ -1991,7 +2005,7 @@ function update(dt){
     updateCamera(dt);                                                          // keep the camera alive; world frozen
   } else if(state==='race'){
     raceTime+=dt; if(goTimer>0) goTimer-=dt; else if(elFlash.textContent==='GO!') elFlash.classList.remove('show');
-    const inp = window.__auto ? aiInput(player) : { throttle: keys.up || (isTouch && !keys.down && player.vel.length()<6), brake: keys.down,
+    const inp = window.__auto ? aiInput(player) : { throttle: keys.up || joyY>0.25, brake: keys.down || joyY<-0.25,
       steer: clamp((keys.left?1:0)-(keys.right?1:0) + joyX, -1, 1), drift: keys.space, boost: keys.shift };
     updateCar(player, inp, dt);
     for(let i=1;i<cars.length;i++){ const c=cars[i];
@@ -2115,8 +2129,7 @@ function bindButton(id, key){ const el=document.getElementById(id); if(!el) retu
   el.addEventListener('pointercancel',off); el.addEventListener('pointerleave',off);
 }
 function bindTouch(){
-  initJoystick();
-  bindButton('btn-gas','up'); bindButton('btn-brake','down');
+  initJoystick();                                            // joystick now drives steer + accelerate/brake
   bindButton('btn-drift','space'); bindButton('btn-boost','shift');
 }
 function initJoystick(){
@@ -2130,8 +2143,12 @@ function initJoystick(){
     let nx=clamp(dx/R,-1,1), m=Math.abs(nx), dead=0.12;            // deadzone + ease for finer steering
     m = m<dead ? 0 : Math.pow((m-dead)/(1-dead), 1.4);
     joyX = -Math.sign(nx)*m;                          // push right => turn right (same sign as the keys)
+    let ny=clamp(-dy/R,-1,1), my=Math.abs(ny), deadY=0.2;          // push up => accelerate, down => brake (bigger deadzone so steering doesn't trigger it)
+    my = my<deadY ? 0 : (my-deadY)/(1-deadY);
+    joyY = Math.sign(ny)*my;
+    knob.classList.toggle('gas', joyY>0.05); knob.classList.toggle('brk', joyY<-0.05);
   };
-  const reset=()=>{ active=false; pid=null; joyX=0; knob.style.transform='translate(0,0)'; };
+  const reset=()=>{ active=false; pid=null; joyX=0; joyY=0; knob.classList.remove('gas','brk'); knob.style.transform='translate(0,0)'; };
   base.addEventListener('pointerdown', e=>{ active=true; pid=e.pointerId;
     try{ base.setPointerCapture(e.pointerId); }catch(_){} setFrom(e.clientX,e.clientY); e.preventDefault(); });
   base.addEventListener('pointermove', e=>{ if(active && e.pointerId===pid){ setFrom(e.clientX,e.clientY); e.preventDefault(); } });
@@ -2304,7 +2321,7 @@ function init(){
 
   // debug hooks for automated verification
   window.GAME={ get state(){return state;}, get player(){return player;}, get cars(){return cars;},
-    get joyX(){return joyX;}, setJoy:(v)=>{joyX=v;}, sceneCount:()=>scene.children.length,
+    get joyX(){return joyX;}, setJoy:(v)=>{joyX=v;}, get joyY(){return joyY;}, setJoyY:(v)=>{joyY=v;}, sceneCount:()=>scene.children.length,
     get bloom(){return !!composer;}, get carReady(){return carReady;},
     setCarYaw:(v)=>{carYaw=v; upgradeCars();}, press:(k,v)=>{keys[k]=v;}, start:startGame,
     setNight:(v)=>{nightMode=!!v; document.getElementById('togNight').classList.toggle('on',nightMode); selectTrack(currentTrack);},
