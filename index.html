@@ -1815,10 +1815,10 @@ function loadCarModels(){
       undefined, ()=>{ carReady=true; if(cars&&cars.length) upgradeCars(); });   // body-only if wheels fail
   }, undefined, ()=>{}); }catch(e){}
   // fleet sports cars
-  [['sport','models/cc0/cars/sportscar.glb'],['super','models/cc0/cars/supercar.glb'],
-   ['hatch','models/cc0/cars/hatch.glb'],['suv','models/cc0/cars/suv.glb'],['pickup','models/cc0/cars/pickup.glb'],
-   ['racer','models/cc0/cars/racer.glb'],['racecar','models/cc0/cars/racecar.glb'],['muscle','models/cc0/cars/muscle.glb'],
-   ['roadster','models/cc0/cars/roadster.glb'],['police','models/cc0/cars/police.glb'],['taxi','models/cc0/cars/taxi.glb']].forEach(([k,f])=>{
+  [['sport','models/cc0/kenney/sedan-sports.glb'],['super','models/cc0/kenney/race-future.glb'],
+   ['hatch','models/cc0/kenney/hatchback-sports.glb'],['suv','models/cc0/kenney/suv-luxury.glb'],['pickup','models/cc0/kenney/van.glb'],
+   ['racer','models/cc0/kenney/race.glb'],['racecar','models/cc0/kenney/race-future.glb'],['muscle','models/cc0/kenney/suv.glb'],
+   ['roadster','models/cc0/kenney/sedan.glb'],['police','models/cc0/kenney/police.glb'],['taxi','models/cc0/kenney/taxi.glb']].forEach(([k,f])=>{   // CC0 Kenney Car Kit (modular, named wheels)
     try{ L.load(f, g=>{ fleetRaw[k]=g.scene; if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
   });
   // sculpted upgrade parts (Blender, CC0) -> real spoiler/diffuser/lip/skirt instead of procedural boxes
