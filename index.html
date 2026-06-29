@@ -538,7 +538,7 @@ function loadUpg(){ try{ const u=JSON.parse(localStorage.getItem('sd_upg')); car
 function saveUpg(){ try{ localStorage.setItem('sd_upg', JSON.stringify(carUpg)); }catch(e){} }
 function upgOf(i){ return carUpg[i]||{eng:0,tire:0,nos:0}; }
 function carMul(i){ const c=CARS[i]||CARS[0], u=upgOf(i);
-  return { spd:(0.9+(c.spd-70)/30*0.16)*(1+0.035*u.eng), grip:(0.86+(c.grip-60)/30*0.24)*(1+0.06*u.tire) }; }  // stat + upgrades -> physics (tightened span + engine ceiling)
+  return { spd:(0.95+(c.spd-70)/30*0.16)*(1+0.035*u.eng), grip:(0.86+(c.grip-60)/30*0.24)*(1+0.06*u.tire) }; }  // stat + upgrades -> physics (starter competitive w/ base AI)
 function renderShop(){                                   // menu car panel: name, stats, owned/unlock, RACE state
   const i=selectedCar, c=CARS[i], nm=document.getElementById('carName'); if(!nm) return;
   const st=document.getElementById('carStatus'), btn=document.getElementById('startBtn');
