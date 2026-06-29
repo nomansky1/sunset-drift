@@ -695,6 +695,7 @@ const _cd = new THREE.Vector3(), _cl = new THREE.Vector3();   // camera scratch 
 const _UP = new THREE.Vector3(0,1,0);
 let camShake = 0;                       // decaying camera-shake impulse
 let composer = null, bloomPass = null, cinePass = null;  // post-processing (bloom + cinematic grade/blur)
+let roadMatRef = null;                                    // road material -> scrolling chevrons (sense of speed)
 let nightMode = false, rainOn = false, lowQuality = false; // weather / time-of-day / perf toggles
 let sfxVolume = 0.55, muted = false;                     // user audio volume (turned down by default) + mute
 let coins = 0;                                           // reward currency (persisted)
@@ -988,6 +989,16 @@ function buildTrackMeshes(){
     roughnessMap:grain('textures/road_rough.jpg'), roughness:0.42, metalness:0.1,
     emissiveMap:roadMap, emissive:0xffffff, emissiveIntensity:0.42,
     polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4 }); // render ON TOP of the terrain corridor (no z-fight bleed-through)
+  roadMat.onBeforeCompile=(shader)=>{                    // scrolling speed chevrons on the road shoulders (fade in with speed)
+    shader.uniforms.uScroll={value:0}; shader.uniforms.uSpd={value:0}; roadMat.userData.shader=shader;
+    shader.fragmentShader='uniform float uScroll; uniform float uSpd;\n'+shader.fragmentShader.replace('#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+       { float cx=abs(vUv.x-0.5);
+         float band=smoothstep(0.34,0.39,cx)*(1.0-smoothstep(0.43,0.47,cx));          // a band near each road shoulder
+         float chev=step(0.66, fract(vUv.y*3.0 - uScroll));                            // dashes rushing toward the camera
+         totalEmissiveRadiance += vec3(1.0,0.74,0.34) * band * chev * uSpd * 2.4; }`);
+  };
+  roadMatRef=roadMat;
   const rth=currentTheme?currentTheme.theme:'city';        // per-theme road tint (same texture everywhere = consistent)
   if(rth==='desert'){ roadMat.color=new THREE.Color(0x554c3e); roadMat.emissiveIntensity=0.16; roadMat.roughness=0.78; }   // dark dusty desert highway (contrasts the sand)
   else if(rth==='coast'){ roadMat.color=new THREE.Color(0x6f6a64); roadMat.emissiveIntensity=0.28; }
@@ -2253,6 +2264,8 @@ function updateCamera(dt){
     cinePass.uniforms.uBlur.value += (tgt-cinePass.uniforms.uBlur.value)*0.12;
     const spTgt=lowQuality?0:Math.min(Math.max(0,sr-0.35)*1.4 + (c.boosting?0.7:0), 1.5);   // streaks kick in at cruising speed too
     cinePass.uniforms.uSpeed.value += (spTgt-cinePass.uniforms.uSpeed.value)*0.1; }
+  if(roadMatRef&&roadMatRef.userData.shader){ const sp=Math.min(player.vel.length()/CONFIG.topSpeed,1.3), s=roadMatRef.userData.shader.uniforms;   // road chevrons rush with speed
+    s.uScroll.value += sp*dt*9.0; s.uSpd.value += (Math.max(0,sp-0.25)-s.uSpd.value)*0.1; }
 }
 
 /* =========================================================================
@@ -2512,7 +2525,7 @@ function resolveCollisions(){
 
 // one final pass: radial speed blur (sharp centre, streaking edges) + grade + vignette + sRGB
 const CINEMATIC_SHADER = {
-  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uSpeed:{value:0.0}, uContrast:{value:1.13}, uSat:{value:1.2}, uTone:{value:0.9}, uVignette:{value:0.55} },
+  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uSpeed:{value:0.0}, uContrast:{value:1.17}, uSat:{value:1.3}, uTone:{value:0.9}, uVignette:{value:0.55} },
   vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader:[
     'precision highp float; varying vec2 vUv; uniform sampler2D tDiffuse;',
