@@ -154,6 +154,7 @@
   @keyframes bob{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-6px) } }
   .keys{ margin-top:26px; font-size:min(3.6vw,15px); opacity:.82; line-height:1.9; font-weight:normal; max-width:520px; }
   .keys b{ color:var(--accent2); }
+  #results,#champ{ justify-content:safe center; overflow-y:auto; -webkit-overflow-scrolling:touch; }  /* never crop the buttons on a short screen */
   #results .title{ font-size:min(10vw,60px); }
   #resPos{ font-size:min(16vw,90px); font-weight:900; color:var(--accent2); margin:4px 0; text-shadow:0 4px 16px rgba(0,0,0,.5); }
   #resStats{ font-size:min(4.6vw,20px); line-height:1.8; margin-top:6px; }
@@ -326,6 +327,12 @@
     .cta.champ{ font-size:13px; padding:7px 13px; }
     .keys{ display:none; }
     #coinBadge{ font-size:14px; padding:5px 11px; top:8px; right:10px; }
+    /* compact the post-race results so RETRY / GARAGE never get cut off */
+    #results,#champ{ padding:10px 14px; }
+    #results .title{ font-size:30px; } #resPos{ font-size:40px; margin:0; }
+    #resStars{ font-size:18px; } #resStats{ font-size:13px; line-height:1.4; margin-top:2px; }
+    #resReward{ font-size:15px; margin-top:4px; } #resBtnRow{ margin-top:8px; }
+    #nextBtn{ margin-top:6px; } #champRound{ margin:4px 0 8px; } #champTable{ gap:4px; } .champRow{ padding:6px 12px; }
   }
 </style>
 </head>
