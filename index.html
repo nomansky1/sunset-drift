@@ -97,6 +97,12 @@
   #carStatus.lock.afford{ background:linear-gradient(90deg,#ff7a36,#ffd23b); color:#1a0f08; border-color:transparent; box-shadow:0 4px 16px rgba(255,150,60,.4); animation:bob 1.6s ease-in-out infinite; }
   #carStatus.lock:not(.afford){ opacity:.7; }
   #kitRow{ display:none; flex-direction:column; gap:5px; margin-top:9px; }
+  #paintRow{ display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; margin-top:9px; pointer-events:auto; }
+  .paintLbl{ font-size:10px; font-weight:800; letter-spacing:1px; opacity:.55; margin-right:2px; }
+  .paintSw{ width:23px; height:23px; border-radius:50%; cursor:pointer; border:2px solid rgba(255,255,255,.28); transition:.12s; box-shadow:0 1px 3px rgba(0,0,0,.45); }
+  .paintSw:hover{ transform:scale(1.14); }
+  .paintSw.sel{ border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.55); }
+  .paintSw.stock{ background:repeating-linear-gradient(45deg,#4a4d57,#4a4d57 3px,#8a8d97 3px,#8a8d97 6px); }
   .kit{ pointer-events:auto; display:flex; align-items:center; gap:7px; padding:6px 11px; border-radius:11px; cursor:pointer;
         background:rgba(255,255,255,.06); border:1.5px solid rgba(255,255,255,.14); font-size:11px; font-weight:800; letter-spacing:.5px; transition:.12s; }
   .kit .ki{ font-size:14px; line-height:1; }
@@ -403,6 +409,7 @@
           </div>
           <div id="carStatus"></div>
           <div id="kitRow"></div>
+          <div id="paintRow"></div>
         </div>
         <div class="carArrow" id="carNext">▶</div>
       </div>
@@ -578,6 +585,10 @@ const COUNTRIES=[
   {name:'MEXICO', key:'mx', col:0x006847}, {name:'ARGENTINA', key:'ar', col:0x75aadb}, {name:'COLOMBIA', key:'co', col:0xfcd116},
   {name:'VENEZUELA', key:'ve', col:0x00247d}, {name:'PERU', key:'pe', col:0xd91023}, {name:'CHILE', key:'cl', col:0x0039a6},
   {name:'CUBA', key:'cu', col:0x002a8f}, {name:'ECUADOR', key:'ec', col:0xffdd00}, {name:'URUGUAY', key:'uy', col:0x0038a8} ];
+const PAINTS=[ {name:'Stock',hex:null}, {name:'Red',hex:0xe0202a}, {name:'Orange',hex:0xf07315}, {name:'Gold',hex:0xf2c021},
+  {name:'Lime',hex:0x7ac81e}, {name:'Green',hex:0x18a558}, {name:'Teal',hex:0x12a39a}, {name:'Cyan',hex:0x18b5d6},
+  {name:'Blue',hex:0x1e6cff}, {name:'Navy',hex:0x23306e}, {name:'Purple',hex:0x7b3ff2}, {name:'Pink',hex:0xe84f9c},
+  {name:'White',hex:0xeef0f4}, {name:'Black',hex:0x1b1d22}, {name:'Silver',hex:0x9aa0ab} ];
 const _flagCache={};
 function flagCanvas(key){
   const W=120,H=80, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
@@ -612,6 +623,34 @@ function applyLivery(rig, carIdx){
   for(const sx of [-1,1]){ const fl=new THREE.Mesh(new THREE.PlaneGeometry(fw,fh), mat); fl.position.set(sx*d.W*0.46, d.H*0.42, d.Lz*0.03); fl.rotation.y=sx>0?Math.PI/2:-Math.PI/2; g.add(fl); }   // small flag hugging each door
   const hf=new THREE.Mesh(new THREE.PlaneGeometry(fw*0.85,fh*0.85), mat); hf.position.set(0, d.H*0.6, d.Lz*0.3); hf.rotation.x=-Math.PI*0.46; g.add(hf);   // small hood flag
 }
+// ---- PAINT JOB: recolour the body's colour-swatch inside the shared Kenney colormap, leaving glass/lights/wheels intact ----
+let _cmCanvas=null, _bodyCol={}, _paintTex={};
+let paintJobs={}; try{ paintJobs=JSON.parse(localStorage.getItem('sd_paint')||'{}'); }catch(e){ paintJobs={}; }
+function savePaint(){ try{ localStorage.setItem('sd_paint', JSON.stringify(paintJobs)); }catch(e){} }
+function colormapCanvas(tex){ if(_cmCanvas) return _cmCanvas; if(!tex||!tex.image) return null;
+  const c=document.createElement('canvas'); c.width=tex.image.width; c.height=tex.image.height; c.getContext('2d').drawImage(tex.image,0,0); _cmCanvas=c; return c; }
+function bodyDomColor(body, cm, key){ if(_bodyCol[key]) return _bodyCol[key];
+  const geo=body.geometry, uv=geo.attributes.uv, pos=geo.attributes.position; if(!uv||!pos) return null;
+  const W=cm.width,H=cm.height, img=cm.getContext('2d').getImageData(0,0,W,H).data, area={}, idx=geo.index;
+  const tris=idx?idx.count/3:pos.count/3, vA=new THREE.Vector3(), vB=new THREE.Vector3(), vC=new THREE.Vector3(), e1=new THREE.Vector3(), e2=new THREE.Vector3(), nrm=new THREE.Vector3();
+  for(let t=0;t<tris;t++){ const a=idx?idx.getX(t*3):t*3, b=idx?idx.getX(t*3+1):t*3+1, c=idx?idx.getX(t*3+2):t*3+2;
+    vA.fromBufferAttribute(pos,a); vB.fromBufferAttribute(pos,b); vC.fromBufferAttribute(pos,c);
+    nrm.crossVectors(e1.subVectors(vB,vA),e2.subVectors(vC,vA)); const ar=nrm.length()*0.5; nrm.normalize();
+    if(nrm.y<-0.35) continue;   // skip the underside/floor (large area but never seen) so the visible paint wins
+    const cu=(uv.getX(a)+uv.getX(b)+uv.getX(c))/3, cv=(uv.getY(a)+uv.getY(b)+uv.getY(c))/3;
+    const px=Math.min(W-1,Math.max(0,(cu*W)|0)), py=Math.min(H-1,Math.max(0,(cv*H)|0)), o=(py*W+px)*4;
+    if(img[o+3]<200) continue; const k=img[o]+','+img[o+1]+','+img[o+2]; area[k]=(area[k]||0)+ar; }
+  let best=null,bc=0; for(const k in area){ if(area[k]>bc){ bc=area[k]; best=k; } }
+  _bodyCol[key]=best?best.split(',').map(Number):null; return _bodyCol[key]; }
+function paintCar(rig, hex, modelKey){ if(hex==null||!rig.chassis) return;
+  let body=null; rig.chassis.traverse(o=>{ if(o.isMesh&&/body/i.test(o.name||'')) body=o; });
+  if(!body||!body.material.map||!body.material.map.image) return;
+  const cm=colormapCanvas(body.material.map); if(!cm) return; const from=bodyDomColor(body, cm, modelKey); if(!from) return;
+  const to=[(hex>>16)&255,(hex>>8)&255,hex&255], ck=modelKey+':'+hex; let tex=_paintTex[ck];
+  if(!tex){ const c=document.createElement('canvas'); c.width=cm.width; c.height=cm.height; const x=c.getContext('2d'); x.drawImage(cm,0,0);
+    const id=x.getImageData(0,0,c.width,c.height), d=id.data; for(let i=0;i<d.length;i+=4){ if(Math.abs(d[i]-from[0])<36&&Math.abs(d[i+1]-from[1])<36&&Math.abs(d[i+2]-from[2])<36){ d[i]=to[0];d[i+1]=to[1];d[i+2]=to[2]; } } x.putImageData(id,0,0);
+    tex=new THREE.CanvasTexture(c); if('encoding' in tex) tex.encoding=THREE.sRGBEncoding; tex.flipY=body.material.map.flipY; tex.anisotropy=body.material.map.anisotropy; _paintTex[ck]=tex; }
+  body.material=body.material.clone(); body.material.map=tex; body.material.needsUpdate=true; }
 let fleetRaw={}, selectedCar=0, ownedCars=[];
 let kitPartGeo={};                         // Blender-sculpted upgrade parts (spoiler/diffuser/lip/skirt) loaded from parts.glb
 function loadOwned(){ try{ const o=JSON.parse(localStorage.getItem('sd_owned')); ownedCars=Array.isArray(o)?o:[]; }catch(e){ ownedCars=[]; }
@@ -642,8 +681,17 @@ function renderShop(){                                   // menu car panel: name
     st.textContent=(afford?'UNLOCK · ':'🔒 ')+c.price+' 🪙';
     st.onclick=(e)=>{ if(e) e.stopPropagation(); if(coins>=CARS[i].price){ coins-=CARS[i].price; saveCoins(); renderCoins(); ownedCars[i]=true; saveOwned(); renderShop(); } };
     btn.classList.add('locked'); btn.innerHTML='🔒 UNLOCK TO RACE'; }
-  renderKits();
+  renderKits(); renderPaints();
 }
+function renderPaints(){                                  // garage paint-job picker (owned Kenney cars; recolours body, keeps glass)
+  const host=document.getElementById('paintRow'); if(!host) return; const i=selectedCar;
+  if(!isOwned(i) || CARS[i].kind!=='glb'){ host.style.display='none'; host.innerHTML=''; return; }
+  host.style.display='flex'; const cur=paintJobs[i];
+  host.innerHTML='<span class="paintLbl">PAINT</span>'+PAINTS.map(p=>{ const on=(p.hex==null?(cur==null):(cur===p.hex));
+    const bg=p.hex==null?'':'background:#'+('000000'+p.hex.toString(16)).slice(-6);
+    return '<i class="paintSw'+(p.hex==null?' stock':'')+(on?' sel':'')+'" data-hex="'+(p.hex==null?'':p.hex)+'" style="'+bg+'" title="'+p.name+'"></i>'; }).join('');
+  host.querySelectorAll('.paintSw').forEach(sw=>{ sw.onclick=(e)=>{ if(e) e.stopPropagation(); const h=sw.getAttribute('data-hex');
+    if(h==='') delete paintJobs[i]; else paintJobs[i]=parseInt(h,10); savePaint(); upgradeCars(); renderPaints(); }; }); }
 function renderKits(){
   const host=document.getElementById('kitRow'); if(!host) return; const i=selectedCar;
   if(!isOwned(i)){ host.style.display='none'; host.innerHTML=''; return; }
@@ -1957,6 +2005,7 @@ function upgradeCars(){
     const liveryIdx=c.isPlayer?selectedCar:((ci*2+1)%CARS.length);
     applyLivery(rig, liveryIdx);                              // country flag decals + flag-colour theme on every car
     attachUpgrades(rig, liveryIdx, c.isPlayer?null:{eng:2,tire:2,nos:1});   // visible kits on ALL cars (AI get a moderate kit)
+    paintCar(rig, paintJobs[liveryIdx], CARS[liveryIdx].raw||'doge');        // custom paint job (recolours the body, keeps glass)
     if(rig.flames) rig.flames.forEach(f=>rig.group.add(f));   // re-attach exhaust flames (group was wiped above)
     if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
   });
