@@ -1917,13 +1917,28 @@ function attachUpgrades(rig, carIdx){
   // TIRES -> fat tires (doge) + rounded wide-body fender flares straddling each wheel arch (molded, embedded into the body side)
   if(u.tire>0){ const t=u.tire;
     if(rig.wheels) rig.wheels.forEach(w=> w.scale.set(1+0.12*t, 1+0.04*t, 1+0.12*t));
-    if(kitPartGeo.rim){                                                // ALLOY RIMS overlaid on all 4 wheels (Blender, works on every car)
-      const rimMat=new THREE.MeshPhysicalMaterial({color:0xc8cdd6, metalness:0.95, roughness:0.2, envMapIntensity:1.5, clearcoat:0.5});
+    // find the 4 ACTUAL wheel centers by clustering the wheel-mesh verts (kit-local) -> rims + flares align to the real tires, not a guess
+    const wb={}, pv=new THREE.Vector3();
+    const eat=(o,ob)=>{ if(!o.isMesh||!o.geometry||!o.geometry.attributes||!o.geometry.attributes.position) return;
+      const pa=o.geometry.attributes.position; o.updateWorldMatrix(true,false);
+      for(let i=0;i<pa.count;i++){ pv.fromBufferAttribute(pa,i).applyMatrix4(o.matrixWorld); kit.worldToLocal(pv);
+        if(ob && Math.abs(pv.x) < x0*0.55) continue;                   // single-mesh fallback: only outboard verts (the wheels)
+        const key=(pv.x<0?'L':'R')+(pv.z<0?'B':'F'); let b=wb[key]; if(!b) b=wb[key]={x:0,y:0,z:0,n:0,minY:1e9,maxAX:0};
+        b.x+=pv.x; b.y+=pv.y; b.z+=pv.z; b.n++; if(pv.y<b.minY) b.minY=pv.y; if(Math.abs(pv.x)>b.maxAX) b.maxAX=Math.abs(pv.x); } };
+    rig.chassis.traverse(o=>{ if(o.isMesh && /wheel|tyre|tire|heel/i.test(o.name||'')) eat(o,false); });   // 9/12 cars have named wheel meshes
+    if(rig.wheels) rig.wheels.forEach(wg=> wg.traverse(o=>eat(o,false)));                                  // DRIFTER: real wheel groups
+    let exact=Object.keys(wb).length>=4;
+    if(!exact){ for(const k in wb) delete wb[k]; rig.chassis.traverse(o=>{ if(o.isMesh) eat(o,true); }); }   // COUPE/HATCH/SUV: cluster outboard body verts
+    let wheels = Object.keys(wb).length>=4
+      ? Object.keys(wb).map(k=>{ const b=wb[k], cy=b.y/b.n; return exact
+          ? {x:b.x/b.n, y:cy, z:b.z/b.n, rad:Math.max(0.18, cy-b.minY), outerX:b.maxAX}
+          : {x:b.x/b.n, y:Lz*0.085, z:b.z/b.n, rad:Lz*0.085, outerX:b.maxAX}; })
+      : [[-1,-1],[-1,1],[1,-1],[1,1]].map(([sx,sz])=>({x:sx*x0*0.9, y:Lz*0.086, z:sz*Lz*0.32, rad:Lz*0.09, outerX:x0*0.98}));
+    if(kitPartGeo.rim){ const rimMat=new THREE.MeshPhysicalMaterial({color:0xc8cdd6, metalness:0.95, roughness:0.2, envMapIntensity:1.5, clearcoat:0.5});
       const rgeo=kitPartGeo.rim; if(!rgeo.boundingBox) rgeo.computeBoundingBox(); const rsz=new THREE.Vector3(); rgeo.boundingBox.getSize(rsz);
-      const wheelY=Lz*0.086, rk=(Lz*0.15)/(rsz.y||1), wz=Lz*0.32;
-      for(const sx of [-1,1]) for(const sz of [-1,1]){ const rm=new THREE.Mesh(rgeo, rimMat); rm.castShadow=sh; rm.scale.setScalar(rk);
-        rm.position.set(sx*x0*0.99, wheelY, sz*wz); if(sx<0) rm.rotation.y=Math.PI; kit.add(rm); } }
-    for(const sx of [-1,1]) for(const sz of [-1,1]){ const fl=add(rbox(0.09+0.015*t, H*0.18, Lz*0.22, 0.06), bodyKit); fl.position.set(sx*x0*0.83, floorY+H*0.32, sz*Lz*0.3); }   // inset to overlap the body side
+      wheels.forEach(w=>{ const rk=(w.rad*1.45)/(rsz.y||1); const rm=new THREE.Mesh(rgeo, rimMat); rm.castShadow=sh; rm.scale.setScalar(rk);
+        rm.position.set(Math.sign(w.x)*(w.outerX-0.04), w.y, w.z); if(w.x<0) rm.rotation.y=Math.PI; kit.add(rm); }); }
+    wheels.forEach(w=>{ const fl=add(rbox(0.08+0.015*t, w.rad*1.4, w.rad*2.2, 0.05), bodyKit); fl.position.set(Math.sign(w.x)*(w.outerX-0.06), w.y+w.rad*0.55, w.z); });   // fender flares over the real arches
     if(t>=3) for(const sx of [-1,1]){ const can=add(rbox(0.3,0.03,0.16,0.012), carbon); can.position.set(sx*x0*0.74, floorY+H*0.18, front-Lz*0.05); can.rotation.x=0.2; }
   }
   // NITROUS -> rounded bottles with domed caps, half-sunk into the rear deck + a molded cradle
