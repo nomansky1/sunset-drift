@@ -1404,6 +1404,23 @@ function scatterProps(){ const rng=mulberry32(7777);
   buildRoadside(rng);                                  // cones + roadside markers on EVERY track
   buildBirds(rng);                                     // flying bird flock (animated) on EVERY track
   if(th==='city'||th==='docks'||th==='coast'||th==='beach') buildParkedCars(rng);   // parked cars = street life
+  buildTrackFurniture(rng);                            // Kenney Racing Kit: grandstands + pits + start gantry + banners
+}
+// real-racetrack furniture from the CC0 Kenney Racing Kit (grandstands / pit garages / start gantry / banner towers)
+function buildTrackFurniture(rng){
+  if(!propsReady) return;
+  const straights=[]; for(let i=0;i<SAMPLES;i+=2){ const a=sampleTan[(i-4+SAMPLES)%SAMPLES], b=sampleTan[(i+4)%SAMPLES]; if((1-(a.x*b.x+a.y*b.y))<0.02) straights.push(i); }
+  if(propModels.gantry){ const p=samplePts[0], t=sampleTan[0]; instProp(propModels.gantry, [propMat(p.x,p.y, 32, Math.atan2(t.x,t.y), 0)]); }   // start/finish gantry over the road
+  if(propModels.grandstand && straights.length){ const xf=[], step=Math.max(8,Math.floor(straights.length/9));   // grandstands on the outside of straights, facing the track
+    for(let k=0;k<straights.length;k+=step){ const i=straights[k], p=samplePts[i], n=sampleNorm[i], side=(k%2)?1:-1, off=CONFIG.roadHalfWidth+11;
+      xf.push(propMat(p.x+n.x*off*side, p.y+n.y*off*side, 12, Math.atan2(-n.x*side,-n.y*side), 0)); }
+    instProp(propModels.grandstand, xf); }
+  if(propModels.pitgarage){ const xf=[]; for(let g=0;g<6;g++){ const i=(10+g*5)%SAMPLES, p=samplePts[i], n=sampleNorm[i], off=CONFIG.roadHalfWidth+8;   // pit-lane garages near the start
+    xf.push(propMat(p.x+n.x*off, p.y+n.y*off, 8, Math.atan2(-n.x,-n.y), 0)); }
+    instProp(propModels.pitgarage, xf); }
+  if(propModels.bannertower){ const xf=[]; for(let k=0;k<6;k++){ const i=Math.floor(k/6*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=k%2?1:-1, off=CONFIG.roadHalfWidth+5;
+    xf.push(propMat(p.x+n.x*off*side, p.y+n.y*off*side, 9, rng()*6.28, 0)); }
+    instProp(propModels.bannertower, xf); }
 }
 let birdFlock=null;
 // flying bird flock that circles high above the track (animated in the render loop)
@@ -2020,6 +2037,10 @@ const PROP_SPECS={
   desertrock:{file:'models/cc0/desertrock.glb', fit:'max'}, // Kenney rock formation (CC0)
   cactus:{file:'models/cc0/cactus.glb', fit:'height'},      // Quaternius cactus (CC0)
   container:{file:'models/cc0/container.glb', fit:'max'},   // Quaternius shipping container (CC0)
+  grandstand:{file:'models/cc0/racing/grandStandCovered.glb', fit:'xz'},   // Kenney Racing Kit (CC0) -> real racetrack furniture
+  pitgarage:{file:'models/cc0/racing/pitsGarage.glb', fit:'xz'},
+  gantry:{file:'models/cc0/racing/overhead.glb', fit:'xz'},
+  bannertower:{file:'models/cc0/racing/bannerTowerRed.glb', fit:'height'},
 };
 function prepProp(root, fit){           // bake -> normalize (base y=0, centred XZ, ref dim = 1); returns [{geometry,material}]
   root.updateMatrixWorld(true);
