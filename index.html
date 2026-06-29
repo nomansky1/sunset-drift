@@ -202,6 +202,7 @@
   .splits span{ color:#c8c6d4; } .splits .fast{ color:#5fe08a; }
   .cstars{ margin-top:5px; font-size:10px; letter-spacing:1px; color:rgba(255,255,255,.22); line-height:1; }
   .cstars b{ color:#ffd23b; font-weight:900; }
+  .cbest{ margin-top:3px; font-size:9px; font-weight:800; letter-spacing:.5px; color:#7ce0ff; min-height:.9em; }
   #flash.cd3{ color:#ff5a4d; text-shadow:0 6px 0 #7a1810,0 10px 30px rgba(0,0,0,.6); }
   #flash.cd2,#flash.cd1{ color:#ffd23b; text-shadow:0 6px 0 #8a5a12,0 10px 30px rgba(0,0,0,.6); }
   #flash.cdgo{ color:#5fe08a; text-shadow:0 6px 0 #155a30,0 10px 30px rgba(0,0,0,.6); }
@@ -597,6 +598,9 @@ const CHAMP_PTS=[10,6,4,2,1,1];                                        // points
 let bestLap = null;
 let lapTimes = [], rivalIdx = -1;                                     // per-lap splits + the designated rival car index
 let trackStars = [];                                                  // best 1-3 stars earned per track (persisted)
+let trackBest = [];                                                   // best total race time per track (persisted)
+function loadBest(){ try{ const b=JSON.parse(localStorage.getItem('sd_best')); trackBest=Array.isArray(b)?b:[]; }catch(e){ trackBest=[]; } }
+function saveBest(){ try{ localStorage.setItem('sd_best', JSON.stringify(trackBest)); }catch(e){} }
 function loadStars(){ try{ const s=JSON.parse(localStorage.getItem('sd_stars')); trackStars=Array.isArray(s)?s:[]; }catch(e){ trackStars=[]; }
   for(let i=0;i<TRACKS.length;i++) if(trackStars[i]===undefined) trackStars[i]=0; }
 function saveStars(){ try{ localStorage.setItem('sd_stars', JSON.stringify(trackStars)); }catch(e){} }
@@ -605,7 +609,9 @@ function renderStars(n){ const host=document.getElementById('resStars'); if(!hos
   for(let k=0;k<n;k++){ setTimeout(()=>{ if(its[k]){ its[k].classList.add('on'); audio&&audio.coin(); } }, 240+k*260); } }
 function renderTrackStars(){ document.querySelectorAll('.trackBtn').forEach(b=>{ const i=+b.dataset.i; let el=b.querySelector('.cstars');
   if(!el){ el=document.createElement('div'); el.className='cstars'; b.appendChild(el); }
-  const s=trackStars[i]||0; el.innerHTML='<b>'+'★'.repeat(s)+'</b>'+'★'.repeat(3-s); }); }
+  const s=trackStars[i]||0; el.innerHTML='<b>'+'★'.repeat(s)+'</b>'+'★'.repeat(3-s);
+  let bt=b.querySelector('.cbest'); if(!bt){ bt=document.createElement('div'); bt.className='cbest'; b.appendChild(bt); }
+  bt.textContent = trackBest[i]?('BEST '+fmt(trackBest[i])):''; }); }
 function lapSplitsHTML(){ if(!lapTimes.length) return ''; let fast=1e9,fi=-1; lapTimes.forEach((t,i)=>{ if(t<fast){fast=t;fi=i;} });
   return '<div class="splits">'+lapTimes.map((t,i)=>'<span class="'+(i===fi?'fast':'')+'">L'+(i+1)+' '+fmt(t)+'</span>').join('')+'</div>'; }
 function animateCount(el, target, prefix, suffix){ if(!el) return; clearInterval(el._iv); const steps=28, inc=target/steps; let i=0;
@@ -2164,8 +2170,10 @@ function finishRace(){
   if(champ.active){ champ.round++; showStandings(); if(audio&&audio.ok) audio.update(0,0,false); return; }   // championship -> standings
   const stars = won?3 : (r<=2?2:1);                                      // 1 finish / 2 podium / 3 win
   if(stars>(trackStars[currentTrack]||0)){ trackStars[currentTrack]=stars; saveStars(); }
+  const prevBest=trackBest[currentTrack]; let newRecord=false;          // best total time per track
+  if(prevBest===undefined || raceTime<prevBest){ trackBest[currentTrack]=raceTime; saveBest(); if(prevBest!==undefined) newRecord=true; }
   const medal = r===1?'🥇 ':r===2?'🥈 ':r===3?'🥉 ':'';
-  document.getElementById('resTitle').textContent = won?'🏆 YOU WIN!':(r<=2?'PODIUM!':'FINISH!');
+  document.getElementById('resTitle').textContent = newRecord?'⏱ NEW RECORD!' : (won?'🏆 YOU WIN!':(r<=2?'PODIUM!':'FINISH!'));
   document.getElementById('resPos').innerHTML = medal+ordinal(r);
   document.getElementById('resStats').innerHTML =
     lapSplitsHTML() + 'Total <b>'+fmt(raceTime)+'</b> &nbsp;·&nbsp; Best <b>'+fmt(bestLap)+'</b>'
@@ -2519,7 +2527,7 @@ function init(){
     currentTrack=(currentTrack+1)%TRACKS.length; selectTrack(currentTrack); startGame(); });
   document.getElementById('garageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
   loadCoins(); renderCoins();
-  loadSelCar(); loadOwned(); loadStars(); loadCamView(); loadUpg();
+  loadSelCar(); loadOwned(); loadStars(); loadCamView(); loadUpg(); loadBest();
   try{ const a=localStorage.getItem('sd_auto'); autoDrive = a===null ? true : a==='1'; }catch(_){ autoDrive=true; }
   document.body.classList.toggle('autodrive', autoDrive);
   document.getElementById('togAuto').classList.toggle('on', autoDrive);
