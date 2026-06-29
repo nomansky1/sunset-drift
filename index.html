@@ -570,6 +570,7 @@ const CARS=[ {name:'DRIFTER', kind:'doge',                spd:70,  grip:88, pric
              {name:'INTERCEPTOR', kind:'glb', raw:'police',   yaw:0, spd:86, grip:84, price:1300},
              {name:'GT',          kind:'glb', raw:'racecar',  yaw:0, spd:98, grip:70, price:1600} ];
 let fleetRaw={}, selectedCar=0, ownedCars=[];
+let kitPartGeo={};                         // Blender-sculpted upgrade parts (spoiler/diffuser/lip/skirt) loaded from parts.glb
 function loadOwned(){ try{ const o=JSON.parse(localStorage.getItem('sd_owned')); ownedCars=Array.isArray(o)?o:[]; }catch(e){ ownedCars=[]; }
   for(let i=0;i<CARS.length;i++) if(ownedCars[i]===undefined) ownedCars[i]=(CARS[i].price===0); }
 function saveOwned(){ try{ localStorage.setItem('sd_owned', JSON.stringify(ownedCars)); }catch(e){} }
@@ -1723,6 +1724,9 @@ function loadCarModels(){
    ['roadster','models/cc0/cars/roadster.glb'],['police','models/cc0/cars/police.glb'],['taxi','models/cc0/cars/taxi.glb']].forEach(([k,f])=>{
     try{ L.load(f, g=>{ fleetRaw[k]=g.scene; if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
   });
+  // sculpted upgrade parts (Blender, CC0) -> real spoiler/diffuser/lip/skirt instead of procedural boxes
+  try{ L.load('models/cc0/parts.glb', g=>{ g.scene.traverse(o=>{ if(o.isMesh&&o.geometry) kitPartGeo[o.name]=o.geometry; });
+    if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
 }
 // wheel layout taken straight from the car pack's own scene (mapped to +Z = forward)
 const CAR_WHEELS=[
@@ -1771,6 +1775,7 @@ function buildDogeCar(rig, color){
   const bb=new THREE.Box3().setFromObject(asm), sz=new THREE.Vector3(), ctr=new THREE.Vector3(); bb.getSize(sz); bb.getCenter(ctr);
   asm.position.set(-ctr.x, -bb.min.y, -ctr.z);
   const sc=4.5/Math.max(sz.x,sz.z,0.001);
+  rig.dims={W:sz.x*sc, H:sz.y*sc, Lz:sz.z*sc, yaw:carYaw||0};   // true normalized size for the upgrade kit
   const scaleG=new THREE.Group(); scaleG.scale.setScalar(sc); scaleG.rotation.y=carYaw; scaleG.add(asm);
   rig.group.add(scaleG);
   rig.chassis=chassis; rig.wheels=wheels; rig.front=front; rig.spinAcc=0;
@@ -1786,6 +1791,7 @@ function buildFleetCar(rig, raw, yaw){   // whole-car GLB (no separate wheels) â
   const bb=new THREE.Box3().setFromObject(chassis), sz=new THREE.Vector3(), ctr=new THREE.Vector3(); bb.getSize(sz); bb.getCenter(ctr);
   chassis.position.set(-ctr.x, -bb.min.y, -ctr.z);
   const sc=4.6/Math.max(sz.x,sz.z,0.001);
+  rig.dims={W:sz.x*sc, H:sz.y*sc, Lz:sz.z*sc, yaw:yaw||0};   // true normalized size (centered, +Z fwd) for the upgrade kit
   const scaleG=new THREE.Group(); scaleG.scale.setScalar(sc); scaleG.rotation.y=yaw; scaleG.add(chassis);
   rig.group.add(scaleG);
   rig.chassis=chassis; rig.wheels=[]; rig.front=[]; rig.spinAcc=0;
@@ -1807,36 +1813,43 @@ const _domeGeo=new THREE.SphereGeometry(1,16,9,0,Math.PI*2,0,Math.PI*0.52);   //
 function attachUpgrades(rig, carIdx){
   const u=upgOf(carIdx), g=rig.group, sh=!isTouch;
   if(!(u.eng||u.tire||u.nos)) return;
-  const fit=g.children.find(o=>o.type==='Group')||g;                // the scaleG holding the normalized chassis (flames not yet re-added)
-  const box=new THREE.Box3().setFromObject(fit), sz=new THREE.Vector3(), ctr=new THREE.Vector3();
-  box.getSize(sz); box.getCenter(ctr);
-  const W=sz.x||2, H=sz.y||1.6, Lz=sz.z||4.6, x0=W/2;
-  const top=box.max.y, floorY=box.min.y, rear=box.min.z, front=box.max.z, midZ=ctr.z;
+  const d=rig.dims||{W:2,H:1.5,Lz:4.6,yaw:0};                        // true normalized car size captured at build (axis-aligned, centered, +Z fwd)
+  const W=d.W, H=d.H, Lz=d.Lz, x0=W/2;
+  const top=H, floorY=0, rear=-Lz/2, front=Lz/2, midZ=0;             // car is centered at the rig origin, sitting on y=0
   const base=new THREE.Color(rig.bodyColor!=null?rig.bodyColor:0x222428);
   const bodyKit=new THREE.MeshStandardMaterial({color:base.clone().multiplyScalar(0.92), metalness:0.5, roughness:0.28, envMapIntensity:0.9, normalMap:flakeTex(), normalScale:new THREE.Vector2(0.15,0.15)});  // tinted to the car = molded look
   const carbon=new THREE.MeshStandardMaterial({color:0x0c0c0f, metalness:0.3, roughness:0.45});
-  const kit=new THREE.Group(); g.add(kit);
+  const kit=new THREE.Group(); kit.rotation.y=d.yaw; g.add(kit);   // match the model yaw so parts align with the car's +Z forward
   const add=(geo,mat)=>{ const m=new THREE.Mesh(geo,mat); m.castShadow=sh; kit.add(m); return m; };
   const dome=(mat)=>add(_domeGeo,mat);
-  // ENGINE -> molded rear wing that CONNECTS to the deck (mounts drop in) + low hood dome
-  if(u.eng>0){ const s=u.eng, span=W*0.84;
-    const af=new THREE.Shape(); af.moveTo(-0.5,0); af.quadraticCurveTo(0,0.17,0.5,0.03); af.quadraticCurveTo(0,-0.07,-0.5,0);
-    const wingGeo=new THREE.ExtrudeGeometry(af,{depth:span,bevelEnabled:true,bevelThickness:0.02,bevelSize:0.02,bevelSegments:2,steps:1});
-    wingGeo.rotateY(Math.PI/2); wingGeo.center(); wingGeo.scale(0.62,0.62, s>=2?1:0.55);
-    const wg=new THREE.Group(); wg.position.set(0, top-H*0.12, rear+Lz*0.06);   // sit just over the rear deck, slightly inset
-    const wing=new THREE.Mesh(wingGeo, bodyKit); wing.castShadow=sh; wg.add(wing);
-    for(const sx of [-1,1]){ const mnt=new THREE.Mesh(rbox(0.07,H*0.36,0.13,0.03), carbon); mnt.position.set(sx*span*0.32, -H*0.18, 0.02); wg.add(mnt); }  // tall mounts embed into the deck = attached
-    if(s>=2) for(const sx of [-1,1]){ const ep=new THREE.Mesh(rbox(0.025,0.2,0.34,0.05), carbon); ep.position.set(sx*span*0.5,0.02,0); wg.add(ep); }
-    if(s>=3){ const up=wing.clone(); up.scale.set(0.72,0.72,0.72); up.position.y=H*0.12; wg.add(up); }
-    kit.add(wg);
+  const placeGLB=(name,axis,target,mat,x,y,z,rotX)=>{                 // place a sculpted part, uniform-scaled by one axis to fit the car
+    const geo=kitPartGeo[name]; if(!geo) return null;
+    if(!geo.boundingBox) geo.computeBoundingBox(); const s=new THREE.Vector3(); geo.boundingBox.getSize(s);
+    const dim=axis==='z'?s.z:axis==='y'?s.y:s.x, k=target/(dim||1);
+    const m=new THREE.Mesh(geo,mat); m.castShadow=sh; m.scale.setScalar(k); m.position.set(x,y,z); if(rotX) m.rotation.x=rotX; kit.add(m); return m; };
+  // ENGINE -> sculpted GT wing (blade + uprights + endplates) on the rear deck + low hood dome
+  if(u.eng>0){ const s=u.eng;
+    if(kitPartGeo.spoiler){ placeGLB('spoiler','x', W*0.86*(s>=2?1:0.82), bodyKit, 0, top-H*0.05, rear+Lz*0.05, 0); }
+    else { const span=W*0.84;                                          // procedural fallback if the GLB hasn't loaded
+      const af=new THREE.Shape(); af.moveTo(-0.5,0); af.quadraticCurveTo(0,0.17,0.5,0.03); af.quadraticCurveTo(0,-0.07,-0.5,0);
+      const wingGeo=new THREE.ExtrudeGeometry(af,{depth:span,bevelEnabled:true,bevelThickness:0.02,bevelSize:0.02,bevelSegments:2,steps:1});
+      wingGeo.rotateY(Math.PI/2); wingGeo.center(); wingGeo.scale(0.62,0.62, s>=2?1:0.55);
+      const wg=new THREE.Group(); wg.position.set(0, top-H*0.12, rear+Lz*0.06);
+      const wing=new THREE.Mesh(wingGeo, bodyKit); wing.castShadow=sh; wg.add(wing);
+      for(const sx of [-1,1]){ const mnt=new THREE.Mesh(rbox(0.07,H*0.36,0.13,0.03), carbon); mnt.position.set(sx*span*0.32, -H*0.18, 0.02); wg.add(mnt); }
+      if(s>=2) for(const sx of [-1,1]){ const ep=new THREE.Mesh(rbox(0.025,0.2,0.34,0.05), carbon); ep.position.set(sx*span*0.5,0.02,0); wg.add(ep); }
+      kit.add(wg); }
     const scoop=dome(bodyKit); scoop.scale.set(W*0.16, H*(0.07+0.03*s), Lz*0.1); scoop.position.set(0, top-H*0.05, front-Lz*0.28);   // low hood bulge
   }
-  // ENGINE>=2 -> ground-effect kit: splitter + side skirts + diffuser (all rounded + embedded into the body)
+  // ENGINE>=2 -> ground-effect kit: sculpted front lip + side skirts + rear diffuser (procedural fallback)
   if(u.eng>=2){
-    add(rbox(W*0.92,0.05,0.32,0.06), bodyKit).position.set(0, floorY+H*0.05, front-Lz*0.03);                 // front splitter tucked at the nose
-    for(const sx of [-1,1]) add(rbox(0.07,H*0.12,Lz*0.5,0.035), bodyKit).position.set(sx*x0*0.95, floorY+H*0.12, midZ);   // skirts overlap the rocker
-    const df=add(rbox(W*0.68,0.11,0.3,0.05), bodyKit); df.position.set(0, floorY+H*0.06, rear+Lz*0.03); df.rotation.x=-0.18;
-    for(let f=0;f<4;f++){ const fin=add(rbox(0.03,0.11,0.3,0.012), carbon); fin.position.set((f-1.5)*W*0.16, floorY+H*0.06, rear+Lz*0.03); fin.rotation.x=-0.18; }
+    if(kitPartGeo.lip) placeGLB('lip','x', W*0.92, bodyKit, 0, floorY+H*0.05, front-Lz*0.04, 0);
+    else add(rbox(W*0.92,0.05,0.32,0.06), bodyKit).position.set(0, floorY+H*0.05, front-Lz*0.03);
+    if(kitPartGeo.skirt) for(const sx of [-1,1]) placeGLB('skirt','z', Lz*0.5, bodyKit, sx*x0*0.95, floorY+H*0.12, midZ, 0);
+    else for(const sx of [-1,1]) add(rbox(0.07,H*0.12,Lz*0.5,0.035), bodyKit).position.set(sx*x0*0.95, floorY+H*0.12, midZ);
+    if(kitPartGeo.diffuser) placeGLB('diffuser','x', W*0.7, bodyKit, 0, floorY+H*0.07, rear+Lz*0.03, -0.18);
+    else { const df=add(rbox(W*0.68,0.11,0.3,0.05), bodyKit); df.position.set(0, floorY+H*0.06, rear+Lz*0.03); df.rotation.x=-0.18;
+      for(let f=0;f<4;f++){ const fin=add(rbox(0.03,0.11,0.3,0.012), carbon); fin.position.set((f-1.5)*W*0.16, floorY+H*0.06, rear+Lz*0.03); fin.rotation.x=-0.18; } }
   }
   // TIRES -> fat tires (doge) + rounded wide-body fender flares straddling each wheel arch (molded, embedded into the body side)
   if(u.tire>0){ const t=u.tire;
