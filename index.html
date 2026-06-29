@@ -1577,10 +1577,11 @@ function buildCar(color){
 }
 function makeExhaustFlame(){
   const grp=new THREE.Group();
-  const mk=(r,h,color,op)=>{ const geo=new THREE.ConeGeometry(r,h,12,1,true); geo.translate(0,h/2,0); geo.rotateX(-Math.PI/2);
+  const mk=(r,h,color,op)=>{ const geo=new THREE.ConeGeometry(r,h,14,1,true); geo.translate(0,h/2,0); geo.rotateX(-Math.PI/2);
     return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color, transparent:true, opacity:op, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide, fog:false})); };
-  grp.add(mk(0.33,2.0,0xff4d12,0.5));    // outer orange jet
-  grp.add(mk(0.18,1.35,0xffd060,0.9));   // inner yellow-white core
+  grp.add(mk(0.42,2.3,0xff2a00,0.40));   // deep-red outer flame
+  grp.add(mk(0.28,1.7,0xff7a18,0.60));   // orange mid
+  grp.add(mk(0.15,1.05,0xffe88a,0.95));  // yellow-white core (realistic fire gradient)
   grp.visible=false; return grp;
 }
 
@@ -1881,16 +1882,16 @@ function updateCar(c, inp, dt){
       }
       if(c.skidTimer<=0 && skidPool.length){ dropSkid(rx,rz,c.heading,ey); c.skidTimer=0.022; }
     }
-    if(c.boosting){                                               // thin spark trail out the exhaust (not a cloud)
-      const fwx=Math.sin(c.heading), fwz=Math.cos(c.heading), rix=Math.cos(c.heading), riz=-Math.sin(c.heading);
-      const bx2=c.pos.x-fwx*2.25, bz2=c.pos.y-fwz*2.25;           // rear of the car
-      for(let s=-1;s<=1;s+=2){ const exx=bx2+rix*0.45*s, ezz=bz2+riz*0.45*s;
-        sparks.emit(exx,0.55+ey,ezz, -fwx*13+(Math.random()-.5)*1.5, 0.25+Math.random()*0.5, -fwz*13+(Math.random()-.5)*1.5, 0.20, 2.5+Math.random()*2.5); }
+    if(c.boosting && Math.random()<0.5){                          // a FEW tiny embers off the flame (not an orange cloud)
+      const fwx=Math.sin(c.heading), fwz=Math.cos(c.heading);
+      const bx2=c.pos.x-fwx*2.3, bz2=c.pos.y-fwz*2.3;             // rear of the car
+      sparks.emit(bx2+(Math.random()-.5)*0.5, 0.55+ey, bz2+(Math.random()-.5)*0.5, -fwx*8+(Math.random()-.5), 0.5+Math.random()*0.7, -fwz*8+(Math.random()-.5), 0.16, 1.6+Math.random()*1.6);
     }
   }
-  if(c.rig.flames){                                               // flicker the twin exhaust flares while boosting (bigger with nitrous)
+  if(c.rig.flames){                                               // licking fire flares while boosting (bigger with nitrous)
     const on=c.boosting, nf=c.nosForce||1;
-    for(const f of c.rig.flames){ f.visible=on; if(on) f.scale.set((0.8+Math.random()*0.3)*nf, (0.8+Math.random()*0.3)*nf, (0.7+Math.random()*0.6)*nf); }
+    for(const f of c.rig.flames){ f.visible=on; if(on){ f.scale.set((0.78+Math.random()*0.35)*nf, (0.78+Math.random()*0.35)*nf, (0.6+Math.random()*0.8)*nf);
+      f.rotation.z=(Math.random()-0.5)*0.25; } }   // flicker length + lick sideways
   }
   // ----- arcade: pickups + drift style score (player, racing) -----
   if(c.isPlayer && state==='race'){
