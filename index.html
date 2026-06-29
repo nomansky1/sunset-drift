@@ -732,13 +732,13 @@ class AudioEngine {
       // ENGINE: REAL recorded loops (CC0) crossfaded by RPM + pitch-shifted -> sounds like an actual car
       this.engGain=this.ctx.createGain(); this.engGain.gain.value=0; this.engGain.connect(this.comp);
       this.layers=[]; this.buffers={}; this._rpm=0.12; this.skidOn=false;
-      const LAYERS=[['audio/eng0.wav',0.10],['audio/eng2.wav',0.42],['audio/eng4.wav',0.72],['audio/eng5.wav',1.0]];
+      const LAYERS=[['audio/engine-idle.mp3',0.10],['audio/eng2.wav',0.42],['audio/eng4.wav',0.72],['audio/eng5.wav',1.0]];  // cleaner CC0 idle at the low end
       LAYERS.forEach((L,i)=>{ this._fetchBuf(L[0]).then(buf=>{ if(!buf||!this.ctx) return;
         const src=this.ctx.createBufferSource(); src.buffer=buf; src.loop=true;
         const g=this.ctx.createGain(); g.gain.value=0; src.connect(g); g.connect(this.engGain); try{src.start();}catch(e){}
         this.layers[i]={src,g,center:L[1]}; }); });
       this._fetchBuf('audio/skid.mp3').then(b=>this.buffers.skid=b);
-      this._fetchBuf('audio/boost.mp3').then(b=>this.buffers.boost=b);
+      this._fetchBuf('audio/nitro2.mp3').then(b=>this.buffers.boost=b);   // clean CC0 air-hiss NOS purge (replaces the harsh whoosh)
       this.master.gain.linearRampToValueAtTime(muted?0:sfxVolume, t+0.4);
       this.ok=true;
     }catch(e){ this.ok=false; }
@@ -757,7 +757,7 @@ class AudioEngine {
       L.g.gain.setTargetAtTime(w, t, 0.09);
       try{ L.src.playbackRate.setTargetAtTime(pitch, t, 0.09); }catch(e){}
     }
-    this.engGain.gain.setTargetAtTime(0.5 + (throttle?0.35:0.08) + this._rpm*0.15, t, 0.1);
+    this.engGain.gain.setTargetAtTime(0.42 + (throttle?0.32:0.07) + this._rpm*0.14, t, 0.1);   // a touch quieter/less buzzy
     if(drift) this._startSkid(); else this._stopSkid();
   }
   _startSkid(){ if(this.skidOn||!this.buffers.skid) return; this.skidOn=true; const t=this.ctx.currentTime;
@@ -1679,6 +1679,7 @@ function upgradeCars(){
   });
 }
 function buildDogeCar(rig, color){
+  rig.bodyColor=new THREE.Color(color).getHex();   // for the color-matched upgrade kit
   const asm=new THREE.Group();
   const chassis=new THREE.Group();
   const body=carBodyRaw.clone();
@@ -1702,7 +1703,9 @@ function buildDogeCar(rig, color){
 function buildFleetCar(rig, raw, yaw){   // whole-car GLB (no separate wheels) â€” normalized + glossy
   const chassis=new THREE.Group();
   const body=raw.clone();
-  body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false; if(o.material){ o.material=o.material.clone(); o.material.envMapIntensity=0.75; if(o.material.roughness!=null) o.material.roughness=Math.max(o.material.roughness,0.4); } } });
+  rig.bodyColor=null;
+  body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false; if(o.material){ o.material=o.material.clone(); o.material.envMapIntensity=0.75; if(o.material.roughness!=null) o.material.roughness=Math.max(o.material.roughness,0.4);
+    if(o.material.color && rig.bodyColor==null) rig.bodyColor=o.material.color.getHex(); } } });   // body hue -> color-matched upgrade kit
   chassis.add(body);
   const bb=new THREE.Box3().setFromObject(chassis), sz=new THREE.Vector3(), ctr=new THREE.Vector3(); bb.getSize(sz); bb.getCenter(ctr);
   chassis.position.set(-ctr.x, -bb.min.y, -ctr.z);
@@ -1711,22 +1714,53 @@ function buildFleetCar(rig, raw, yaw){   // whole-car GLB (no separate wheels) â
   rig.group.add(scaleG);
   rig.chassis=chassis; rig.wheels=[]; rig.front=[]; rig.spinAcc=0;
 }
-// visible performance-kit parts, appended to rig.group (rides the showcase orbit + every rebuild). Works on all cars (normalized ~4.6u, +Z forward).
+// MOLDED supercar body kit: measured off the car's bounding box so it fits all 12 bodies + color-matched so it reads as part of the car.
 function attachUpgrades(rig, carIdx){
   const u=upgOf(carIdx), g=rig.group, sh=!isTouch;
-  const dark=new THREE.MeshStandardMaterial({color:0x141419, roughness:0.5, metalness:0.35});
-  if(u.eng>0){ const s=u.eng;                                  // ENGINE: hood scoop + rear wing
-    const scoop=new THREE.Mesh(new THREE.BoxGeometry(0.7,0.12+0.06*s,0.55), dark); scoop.position.set(0,1.0+0.04*s,1.25); scoop.castShadow=sh; g.add(scoop);
-    const ww=1.5+0.22*s, wy=1.18+0.12*s;
-    const wing=new THREE.Mesh(new THREE.BoxGeometry(ww,0.09,0.42), dark); wing.position.set(0,wy,-2.0); wing.castShadow=sh; g.add(wing);
-    for(const sx of [-1,1]){ const post=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.32+0.1*s,0.12), dark); post.position.set(sx*ww*0.38, wy-0.2, -2.0); g.add(post); } }
-  if(u.tire>0){ const t=u.tire;                                 // TIRES: fatten doge wheels + fender flares (all cars)
-    if(rig.wheels) rig.wheels.forEach(w=> w.scale.set(1+0.08*t, 1+0.06*t, 1+0.06*t));
-    const fm=new THREE.MeshStandardMaterial({color:0x17171c, roughness:0.75});
-    for(const sx of [-1,1]) for(const sz of [-1,1]){ const fl=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.2+0.05*t,0.78), fm); fl.position.set(sx*1.02,0.4,sz*1.42); fl.castShadow=sh; g.add(fl); } }
-  if(u.nos>0){ const n=u.nos, len=0.8+0.22*n;                   // NITROUS: twin bottles on the rear deck
-    const bm=new THREE.MeshStandardMaterial({color:0x1a6cff, emissive:0x1f7cff, emissiveIntensity:0.7, roughness:0.4, metalness:0.3});
-    for(const sx of [-1,1]){ const bot=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,len,12), bm); bot.rotation.x=Math.PI/2; bot.position.set(sx*0.32,0.8,-1.3); bot.castShadow=sh; g.add(bot); } }
+  if(!(u.eng||u.tire||u.nos)) return;
+  const fit=g.children.find(o=>o.type==='Group')||g;                // the scaleG holding the normalized chassis (flames not yet re-added)
+  const box=new THREE.Box3().setFromObject(fit), sz=new THREE.Vector3(), ctr=new THREE.Vector3();
+  box.getSize(sz); box.getCenter(ctr);
+  const W=sz.x||2, H=sz.y||1.6, Lz=sz.z||4.6, x0=W/2;
+  const top=box.max.y, floorY=box.min.y, rear=box.min.z, front=box.max.z, midZ=ctr.z;
+  const base=new THREE.Color(rig.bodyColor!=null?rig.bodyColor:0x222428);
+  const bodyKit=new THREE.MeshStandardMaterial({color:base.clone().multiplyScalar(0.9), metalness:0.55, roughness:0.3, envMapIntensity:0.9, normalMap:flakeTex(), normalScale:new THREE.Vector2(0.18,0.18)});  // tinted to the car = molded look
+  const carbon=new THREE.MeshStandardMaterial({color:0x0c0c0f, metalness:0.25, roughness:0.5});
+  const kit=new THREE.Group(); g.add(kit);
+  const add=(geo,mat)=>{ const m=new THREE.Mesh(geo,mat); m.castShadow=sh; kit.add(m); return m; };
+  // ENGINE -> airfoil rear wing (+ end plates / goosenecks / 2nd element) + hood scoop
+  if(u.eng>0){ const s=u.eng, span=W*0.86;
+    const af=new THREE.Shape(); af.moveTo(-0.5,0); af.quadraticCurveTo(0,0.13,0.5,0.02); af.quadraticCurveTo(0,-0.05,-0.5,0);
+    const wingGeo=new THREE.ExtrudeGeometry(af,{depth:span,bevelEnabled:true,bevelThickness:0.012,bevelSize:0.012,bevelSegments:1,steps:1});
+    wingGeo.rotateY(Math.PI/2); wingGeo.center(); wingGeo.scale(0.6, 0.6, s>=2?1:0.5);   // chord; lv1 = short lip spoiler
+    const wg=new THREE.Group(); const wing=new THREE.Mesh(wingGeo, bodyKit); wing.castShadow=sh; wg.add(wing);
+    if(s>=2) for(const sx of [-1,1]){ const ep=new THREE.Mesh(new THREE.BoxGeometry(0.03,0.18,0.34), carbon); ep.position.set(sx*span*0.5,0,0); wg.add(ep); }
+    if(s>=3){ for(const sx of [-1,1]){ const gn=new THREE.Mesh(new THREE.BoxGeometry(0.06,H*0.18,0.1), carbon); gn.position.set(sx*span*0.34,-H*0.10,0.05); wg.add(gn); }
+      const up=wing.clone(); up.scale.set(0.7,0.7,0.7); up.position.y=H*0.12; wg.add(up); }
+    wg.position.set(0, top-H*0.04, rear+Lz*0.03); kit.add(wg);
+    const scoop=add(new THREE.BoxGeometry(W*0.32, 0.08+0.04*s, Lz*0.14), bodyKit); scoop.position.set(0, top-H*0.03, front-Lz*0.30);
+  }
+  // ENGINE>=2 -> ground-effect kit: front splitter + side skirts + rear diffuser (the molded nose-to-tail read)
+  if(u.eng>=2){
+    add(new THREE.BoxGeometry(W*0.98,0.05,0.34), bodyKit).position.set(0, floorY+H*0.04, front+0.02);
+    for(const sx of [-1,1]) add(new THREE.BoxGeometry(0.06,H*0.13,Lz*0.52), bodyKit).position.set(sx*x0*0.99, floorY+H*0.11, midZ);
+    add(new THREE.BoxGeometry(W*0.72,0.12,0.34), bodyKit).position.set(0, floorY+H*0.06, rear-0.02);
+    for(let f=0;f<4;f++) add(new THREE.BoxGeometry(0.03,0.12,0.34), carbon).position.set((f-1.5)*W*0.16, floorY+H*0.06, rear-0.02);
+  }
+  // TIRES -> fat low-profile tires (doge) + sculpted half-torus arches + canards
+  if(u.tire>0){ const t=u.tire;
+    if(rig.wheels) rig.wheels.forEach(w=> w.scale.set(1+0.12*t, 1+0.04*t, 1+0.12*t));
+    const fw=0.1+0.04*t;                                              // wide-body fender flares hugging each wheel arch (color-matched)
+    for(const sx of [-1,1]) for(const sz of [-1,1]){ const fl=add(new THREE.BoxGeometry(fw, 0.14, Lz*0.24), bodyKit); fl.position.set(sx*(x0+fw*0.3), floorY+H*0.24, sz*Lz*0.3); }
+    if(t>=3) for(const sx of [-1,1]) add(new THREE.BoxGeometry(0.34,0.03,0.16), carbon).position.set(sx*x0*0.78, floorY+H*0.2, front-Lz*0.06);
+  }
+  // NITROUS -> recessed bottles in a molded cradle on the rear deck
+  if(u.nos>0){ const n=u.nos;
+    const bm=new THREE.MeshStandardMaterial({color:0x1a6cff, emissive:0x1f7cff, emissiveIntensity:n>=3?1.1:0.7, roughness:0.4, metalness:0.3});
+    if(n>=2) add(new THREE.BoxGeometry(W*0.5,0.06,0.5), bodyKit).position.set(0, top-H*0.18, rear+Lz*0.1);
+    const xs = n>=2 ? [-1,1] : [0];
+    for(const sx of xs){ const bot=add(new THREE.CylinderGeometry(0.1,0.1,0.5+0.16*n,12), bm); bot.rotation.x=Math.PI/2; bot.position.set(sx*W*0.13, top-H*0.13, rear+Lz*0.1); }
+  }
 }
 
 /* ---- real CC0 props (Quaternius / Kenney low-poly GLBs) instanced onto the terrain ---- */
