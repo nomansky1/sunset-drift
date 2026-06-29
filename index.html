@@ -1768,6 +1768,8 @@ function loadCarModels(){
   // sculpted upgrade parts (Blender, CC0) -> real spoiler/diffuser/lip/skirt instead of procedural boxes
   try{ L.load('models/cc0/parts.glb', g=>{ g.scene.traverse(o=>{ if(o.isMesh&&o.geometry) kitPartGeo[o.name]=o.geometry; });
     if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
+  try{ L.load('models/cc0/rim.glb', g=>{ g.scene.traverse(o=>{ if(o.isMesh&&o.geometry) kitPartGeo.rim=o.geometry; });
+    if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}   // alloy rim (Blender) -> swapped on wheels with the tire kit
 }
 // wheel layout taken straight from the car pack's own scene (mapped to +Z = forward)
 const CAR_WHEELS=[
@@ -1857,6 +1859,7 @@ function attachUpgrades(rig, carIdx){
   const d=rig.dims||{W:2,H:1.5,Lz:4.6,yaw:0};                        // true normalized car size captured at build (axis-aligned, centered, +Z fwd)
   const W=d.W, H=d.H, Lz=d.Lz, x0=W/2;
   const top=H, floorY=0, rear=-Lz/2, front=Lz/2, midZ=0;             // car is centered at the rig origin, sitting on y=0
+  const tall=(H/Lz)>0.33;                                            // pickups/SUVs -> a GT wing looks wrong; give them a ducktail instead
   const base=new THREE.Color(rig.bodyColor!=null?rig.bodyColor:0x222428);
   const bodyKit=new THREE.MeshPhysicalMaterial({color:base.clone().multiplyScalar(0.95), metalness:0.45, roughness:0.32, envMapIntensity:1.15, clearcoat:1.0, clearcoatRoughness:0.12, normalMap:flakeTex(), normalScale:new THREE.Vector2(0.12,0.12)});  // SAME clear-coat paint + colour as the car body -> parts blend in, not stuck-on
   const carbon=new THREE.MeshStandardMaterial({color:0x0c0c0f, metalness:0.3, roughness:0.45});
@@ -1878,7 +1881,10 @@ function attachUpgrades(rig, carIdx){
   if(u.eng>0){ const s=u.eng;
     const wingZ=rear*0.72;                                             // deck = HIGHEST surface AT the wing's z (so a wing never sinks into a pickup bed nor floats on the cabin)
     const deckY=Math.max(surfY(0,wingZ,top*0.5), surfY(W*0.25,wingZ,-9), surfY(-W*0.25,wingZ,-9));
-    if(kitPartGeo.spoiler){ const geo=kitPartGeo.spoiler; if(!geo.boundingBox) geo.computeBoundingBox();
+    if(tall){                                                          // pickup/SUV -> subtle ducktail lip on the rear deck (no GT wing)
+      const dz=rear*0.86, dY=Math.max(surfY(0,dz,top*0.5), surfY(W*0.25,dz,-9), surfY(-W*0.25,dz,-9));
+      const duck=add(rbox(W*0.82, H*0.045, 0.24, 0.05), bodyKit); duck.position.set(0, dY+H*0.03, dz); duck.rotation.x=-0.32;
+    } else if(kitPartGeo.spoiler){ const geo=kitPartGeo.spoiler; if(!geo.boundingBox) geo.computeBoundingBox();
       const gs=new THREE.Vector3(); geo.boundingBox.getSize(gs); const k=W*0.86*(s>=2?1:0.82)/(gs.x||1);
       const m=new THREE.Mesh(geo, bodyKit); m.castShadow=sh; m.scale.setScalar(k);
       m.position.set(0, deckY - geo.boundingBox.min.y*k - H*0.06, wingZ); kit.add(m);   // uprights sink slightly INTO the real deck = bolted, no gap
@@ -1911,6 +1917,12 @@ function attachUpgrades(rig, carIdx){
   // TIRES -> fat tires (doge) + rounded wide-body fender flares straddling each wheel arch (molded, embedded into the body side)
   if(u.tire>0){ const t=u.tire;
     if(rig.wheels) rig.wheels.forEach(w=> w.scale.set(1+0.12*t, 1+0.04*t, 1+0.12*t));
+    if(kitPartGeo.rim){                                                // ALLOY RIMS overlaid on all 4 wheels (Blender, works on every car)
+      const rimMat=new THREE.MeshPhysicalMaterial({color:0xc8cdd6, metalness:0.95, roughness:0.2, envMapIntensity:1.5, clearcoat:0.5});
+      const rgeo=kitPartGeo.rim; if(!rgeo.boundingBox) rgeo.computeBoundingBox(); const rsz=new THREE.Vector3(); rgeo.boundingBox.getSize(rsz);
+      const wheelY=Lz*0.086, rk=(Lz*0.15)/(rsz.y||1), wz=Lz*0.32;
+      for(const sx of [-1,1]) for(const sz of [-1,1]){ const rm=new THREE.Mesh(rgeo, rimMat); rm.castShadow=sh; rm.scale.setScalar(rk);
+        rm.position.set(sx*x0*0.99, wheelY, sz*wz); if(sx<0) rm.rotation.y=Math.PI; kit.add(rm); } }
     for(const sx of [-1,1]) for(const sz of [-1,1]){ const fl=add(rbox(0.09+0.015*t, H*0.18, Lz*0.22, 0.06), bodyKit); fl.position.set(sx*x0*0.83, floorY+H*0.32, sz*Lz*0.3); }   // inset to overlap the body side
     if(t>=3) for(const sx of [-1,1]){ const can=add(rbox(0.3,0.03,0.16,0.012), carbon); can.position.set(sx*x0*0.74, floorY+H*0.18, front-Lz*0.05); can.rotation.x=0.2; }
   }
