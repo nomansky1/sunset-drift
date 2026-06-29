@@ -373,7 +373,7 @@
         <div class="tog" id="muteBtn">🔊</div>
         <input id="volSlider" type="range" min="0" max="100" value="55" aria-label="sfx volume">
         <div class="tog" id="musMuteBtn">🎵</div>
-        <input id="musSlider" type="range" min="0" max="100" value="20" aria-label="music volume">
+        <input id="musSlider" type="range" min="0" max="100" value="12" aria-label="music volume">
       </div>
     </div>
     <div id="ctaRow"><div class="cta" id="startBtn">▶&nbsp; RACE</div><div class="cta cta2 champ" id="champBtn">🏆&nbsp; CUP</div></div>
@@ -662,7 +662,7 @@ const MUSIC={
   beach:'https://storage.googleapis.com/oneilbeats-media/beats/1779375765913_Tormenta_en_la_Pista-TAGGED.mp3',   // former desert track
   snow:'https://storage.googleapis.com/oneilbeats-media/beats/1778803850820_Piel_Canela-TAGGED.mp3',            // ALPINE
 };
-let musicVolume=0.2, musicMuted=false, bgMusic=null, musicTheme=null;   // background music sits under the engine/SFX
+let musicVolume=0.12, musicMuted=false, bgMusic=null, musicTheme=null;   // background music sits well under the engine/SFX
 function applyMusicVol(){ if(bgMusic) bgMusic.volume = musicMuted?0:musicVolume; }
 function playMusic(theme){
   if(!MUSIC[theme]) return;
@@ -768,7 +768,9 @@ class AudioEngine {
     if(this.skidNode){ const sn=this.skidNode; sn.g.gain.setTargetAtTime(0,t,0.1); try{sn.s.stop(t+0.4);}catch(e){} this.skidNode=null; } }
   boost(){ if(!this.ok) return; const t=this.ctx.currentTime;
     if(this.buffers.boost){ const s=this.ctx.createBufferSource(); s.buffer=this.buffers.boost;
-      const g=this.ctx.createGain(); g.gain.value=0.8; s.connect(g); g.connect(this.comp); try{s.start();}catch(e){} }
+      const g=this.ctx.createGain(); g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(0.3,t+0.04); g.gain.setTargetAtTime(0.0,t+0.3,0.25);  // softer + fades (was a flat 0.8 blast)
+      const lp=this.ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=4200;   // shave the harsh top end
+      s.connect(lp); lp.connect(g); g.connect(this.comp); try{s.start();}catch(e){} }
   }
   thud(v){ if(!this.ok) return; v=clamp(v||0.5,0.2,1); try{ const t=this.ctx.currentTime, o=this.comp;
     const so=this.ctx.createOscillator(); so.type='sine'; so.frequency.setValueAtTime(150,t); so.frequency.exponentialRampToValueAtTime(46,t+0.18);
