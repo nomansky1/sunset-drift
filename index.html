@@ -1958,11 +1958,11 @@ function attachUpgrades(rig, carIdx){
   if(u.eng>=2){
     if(kitPartGeo.lip) placeGLB('lip','x', W*0.92, bodyKit, 0, floorY+H*0.05, front-Lz*0.04, 0);
     else add(rbox(W*0.92,0.05,0.32,0.06), bodyKit).position.set(0, floorY+H*0.05, front-Lz*0.03);
-    for(const side of [-1,1]){                                          // side skirt that follows THIS car's body side (raycast at door height = reliable hit)
-      const pos=[], idx=[];
-      for(let i=0;i<=8;i++){ const lz=rear*0.56 + (front*0.56-rear*0.56)*(i/8);
-        const ex=surfX(side, lz, H*0.33, x0*0.9), b=pos.length/3;
-        pos.push(side*(ex-0.05), floorY+H*0.2, lz,  side*(ex-0.01), floorY+H*0.03, lz);   // flush rocker molding (tucked just inside the body line, not a protruding shelf)
+    for(const side of [-1,1]){                                          // side skirt: raycast the body side at BOTH the skirt's top + bottom height so it CONTOURS the car
+      const pos=[], idx=[], NZ=14;
+      for(let i=0;i<=NZ;i++){ const lz=rear*0.58 + (front*0.58-rear*0.58)*(i/NZ);
+        const exTop=surfX(side, lz, floorY+H*0.24, x0*0.92), exBot=surfX(side, lz, floorY+H*0.12, x0*0.9), b=pos.length/3;
+        pos.push(side*(exTop-0.02), floorY+H*0.22, lz,  side*(exBot+0.03), floorY+H*0.035, lz);   // top hugs the body at its height; bottom flares slightly + drops to the sill
         if(i>0){ const a=b-2; idx.push(a,a+1,b, a+1,b+1,b); } }
       const gsk=new THREE.BufferGeometry(); gsk.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); gsk.setIndex(idx); gsk.computeVertexNormals();
       const m=new THREE.Mesh(gsk, bodyKit); m.castShadow=sh; kit.add(m); }
