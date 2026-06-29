@@ -1723,15 +1723,24 @@ function upgradeCars(){
     if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
   });
 }
+// MeshStandard -> MeshPhysical with an automotive CLEAR COAT: a glossy reflective layer over the paint = premium showroom look
+function carPaint(src){
+  return new THREE.MeshPhysicalMaterial({
+    color: src.color?src.color.clone():new THREE.Color(0xcfcfd4),
+    map: src.map||null, metalness: src.metalness!=null?src.metalness:0.35,
+    roughness: src.roughness!=null?Math.min(src.roughness,0.5):0.4,
+    normalMap: src.normalMap||null, normalScale: src.normalScale?src.normalScale.clone():new THREE.Vector2(1,1),
+    emissive: src.emissive?src.emissive.clone():new THREE.Color(0,0,0), emissiveMap: src.emissiveMap||null, emissiveIntensity: src.emissiveIntensity!=null?src.emissiveIntensity:1,
+    envMapIntensity: 1.15, clearcoat: 1.0, clearcoatRoughness: 0.12 });
+}
 function buildDogeCar(rig, color){
   rig.bodyColor=new THREE.Color(color).getHex();   // for the color-matched upgrade kit
   const asm=new THREE.Group();
   const chassis=new THREE.Group();
   const body=carBodyRaw.clone();
   body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false;
-    if(o.material){ if(o.material.name==='body'){ o.material=o.material.clone(); o.material.color.set(color); o.material.metalness=0.42; o.material.roughness=0.36;
-      o.material.normalMap=flakeTex(); o.material.normalScale=new THREE.Vector2(0.22,0.22); }                              // metallic-flake paint
-      o.material.envMapIntensity=0.8; } } });
+    if(o.material){ const isBody=o.material.name==='body'; o.material=carPaint(o.material);     // glossy clear-coat paint
+      if(isBody){ o.material.color.set(color); o.material.metalness=0.42; o.material.roughness=0.34; o.material.normalMap=flakeTex(); o.material.normalScale=new THREE.Vector2(0.22,0.22); } } } });   // metallic-flake paint under the clear coat
   chassis.add(body); asm.add(chassis);
   const wheels=[], front=[];
   CAR_WHEELS.forEach(wp=>{ const wg=new THREE.Group(); wg.position.set(wp.x,wp.y,wp.z); wg.rotation.order='YXZ';
@@ -1749,8 +1758,9 @@ function buildFleetCar(rig, raw, yaw){   // whole-car GLB (no separate wheels) â
   const chassis=new THREE.Group();
   const body=raw.clone();
   rig.bodyColor=null;
-  body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false; if(o.material){ o.material=o.material.clone(); o.material.envMapIntensity=0.75; if(o.material.roughness!=null) o.material.roughness=Math.max(o.material.roughness,0.4);
-    if(o.material.color && rig.bodyColor==null) rig.bodyColor=o.material.color.getHex(); } } });   // body hue -> color-matched upgrade kit
+  body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false; const src=o.material; if(src){
+    if(src.color && rig.bodyColor==null) rig.bodyColor=src.color.getHex();   // body hue -> color-matched upgrade kit
+    o.material=carPaint(src); } } });   // glossy clear-coat paint over the GLB's base colour
   chassis.add(body);
   const bb=new THREE.Box3().setFromObject(chassis), sz=new THREE.Vector3(), ctr=new THREE.Vector3(); bb.getSize(sz); bb.getCenter(ctr);
   chassis.position.set(-ctr.x, -bb.min.y, -ctr.z);
