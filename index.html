@@ -344,6 +344,7 @@
       <div class="trackBtn" data-i="2"><div class="ic">🏗️</div><b>THE DOCKS</b><span>Industrial</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
       <div class="trackBtn" data-i="3"><div class="ic">🏖️</div><b>SUNSET BEACH</b><span>Golden Sands</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
       <div class="trackBtn" data-i="4"><div class="ic">🌲</div><b>PINE PASS</b><span>Forest</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
+      <div class="trackBtn" data-i="5"><div class="ic">🏔️</div><b>ALPINE</b><span>Snow Peaks</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
     </div>
   </div>
   <div class="menuBot">
@@ -572,7 +573,7 @@ function loadSelCar(){ try{ selectedCar=Math.min(CARS.length-1, Math.max(0, pars
 function saveSelCar(){ try{ localStorage.setItem('sd_car', selectedCar); }catch(e){} }
 let WORLD=null, currentTrack=0, currentTheme=null;                 // selectable themed tracks (rebuildable world)
 let terrainNoise=null, terrainAmp=0, terrainBiome='flat';         // procedural terrain (elevated nature themes)
-const TERRAIN={ coast:{amp:15,biome:'coast'}, desert:{amp:44,biome:'desert'}, forest:{amp:66,biome:'forest'}, beach:{amp:34,biome:'beach'} };
+const TERRAIN={ coast:{amp:15,biome:'coast'}, desert:{amp:44,biome:'desert'}, forest:{amp:66,biome:'forest'}, beach:{amp:34,biome:'beach'}, snow:{amp:58,biome:'snow'} };
 const TRACKS=[
   { name:'GOLDEN MILE', sub:'DOWNTOWN · GOLDEN HOUR', theme:'city', groundHex:'#33363d', fog:0xe6885f,
     sky:{top:0x3a2160,bot:0xff9a5a,sun:0xfff2c0}, sun:[-0.5,0.12,-0.85],
@@ -589,10 +590,13 @@ const TRACKS=[
   { name:'PINE PASS', sub:'FOREST · MOUNTAIN TWISTS', theme:'forest', groundHex:'#3f5a34', fog:0x9ab0a0,
     sky:{top:0x2a6abf,bot:0xbfe0f0,sun:0xffffff}, sun:[-0.4,0.32,-0.7],
     ctrl:[[-150,-110],[15,-150],[150,-118],[188,-15],[150,55],[188,120],[55,166],[-95,150],[-174,68],[-176,-52]] },
+  { name:'ALPINE', sub:'SNOW PEAKS · ICE PASS', theme:'snow', groundHex:'#e8eef5', fog:0xdfeaf2,
+    sky:{top:0x4a6a9a,bot:0xdce8f4,sun:0xffffff}, sun:[0.2,0.34,-0.78],
+    ctrl:[[-160,-100],[-15,-150],[140,-128],[190,-25],[120,42],[186,112],[55,168],[-95,150],[-176,62],[-178,-58]] },
 ];
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99, menuT = 0;
-let champ = { active:false, order:[0,3,2,4,1], round:0, points:[] };   // championship: track sequence + points per car
+let champ = { active:false, order:[0,3,5,2,4,1], round:0, points:[] };   // championship: track sequence + points per car
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
 const CHAMP_PTS=[10,6,4,2,1,1];                                        // points by finishing rank
 let bestLap = null;
@@ -1124,6 +1128,7 @@ function biomeColor(h, col){
   else if(terrainBiome==='forest'){ col.setHex(f<0.0?0x3a5a34 : f<0.45?0x3f6b38 : f<0.74?0x6a6358 : 0xe8eef2); }
   else if(terrainBiome==='coast'){ col.setHex(f<0.12?0xd8c088 : 0x7a8a52); }
   else if(terrainBiome==='beach'){ col.setHex(f<0.05?0xc2a674 : f<0.32?0xe8d2a0 : 0xf3e6c2); }   // wet sand -> golden -> pale dune
+  else if(terrainBiome==='snow'){ col.setHex(f<0.18?0x9fb4c8 : f<0.5?0xdfe8f2 : 0xffffff); }      // rock-shadow -> snow -> bright peak
   else col.setHex(0x808080);
 }
 function terrainSlope(x,z){                               // local steepness (rise/run) for placement rules
@@ -1266,7 +1271,7 @@ function scatterProps(){ const rng=mulberry32(7777);
   else if(th==='beach') buildCoast(rng);                 // palms line the beach road
   else if(th==='docks') buildDocks(rng);
   else if(th==='desert') buildDesert(rng);
-  else if(th==='forest') buildForest(rng);
+  else if(th==='forest' || th==='snow') buildForest(rng);   // snow reuses the pine scatter (white ground)
   else { buildCity(rng); buildStreetFurniture(rng); }
   buildRoadside(rng);                                  // cones + roadside markers on EVERY track
 }
@@ -1982,10 +1987,10 @@ function updateSunShadow(){
   sunLight.target.position.set(px,0,pz); sunLight.target.updateMatrixWorld();
 }
 const CAM_VIEWS=[                                              // press C / tap 📷 to cycle
-  {name:'CHASE', dist:11,  height:4.7, look:7.5, fov:66},     // default
-  {name:'CLOSE', dist:8.0, height:3.4, look:6.5, fov:72},     // closer + lower to the car
-  {name:'LOW',   dist:6.0, height:2.2, look:11,  fov:80},     // near the road, immersive
-  {name:'FAR',   dist:15,  height:7.2, look:9,   fov:63},     // wide overview
+  {name:'CHASE', dist:8.5, height:3.9, look:7.0, fov:69},     // default — closer to the car
+  {name:'CLOSE', dist:7.0, height:3.1, look:6.5, fov:73},     // tighter + lower
+  {name:'LOW',   dist:5.2, height:2.0, look:11,  fov:82},     // near the road, immersive
+  {name:'FAR',   dist:13,  height:6.2, look:9,   fov:64},     // wide overview
 ];
 let camView=0;
 function loadCamView(){ try{ camView=Math.min(CAM_VIEWS.length-1, Math.max(0, parseInt(localStorage.getItem('sd_cam'))||0)); }catch(e){ camView=0; } }
@@ -2380,7 +2385,7 @@ function buildWorld(idx){
   const tp=TERRAIN[currentTheme.theme]; terrainAmp=tp?tp.amp:0; terrainBiome=tp?tp.biome:'flat'; terrainNoise=makeNoise(idx*131+7);
   beachSea = (currentTheme.water!==undefined) ? currentTheme.water : null; waterMat=null;   // seaside ocean (set before terrain build)
   const t=currentTheme.theme;                                       // tone per lighting mood
-  const bright = t==='desert' || t==='forest' || t==='beach';       // open full-daylight
+  const bright = t==='desert' || t==='forest' || t==='beach' || t==='snow';   // open full-daylight (snow is very bright)
   const warm   = t==='coast';                                       // bright sunset (still glowy, but don't clip white)
   if(nightMode){
     renderer.toneMappingExposure = 1.0;
