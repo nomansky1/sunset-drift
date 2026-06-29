@@ -542,12 +542,17 @@ let sampleElev = [], roadAmp = 0;        // road centerline elevation profile (3
 let sampleHW = [];                        // per-sample road half-width — narrows at corners too tight for the full width (kills the inner-edge fold glitch)
 function computeRoadElev(){
   sampleElev = new Array(SAMPLES).fill(0);
-  roadAmp = (terrainAmp<=0 || !terrainNoise) ? 0 : clamp(terrainAmp*0.8, 18, 44);
+  roadAmp = (terrainAmp<=0 || !terrainNoise) ? 0 : clamp(terrainAmp*0.9, 22, 52);   // more pronounced climbs on nature themes
   if(!roadAmp) return;
   const raw=samplePts.map(p=> terrainNoise(p.x*0.006+50, p.y*0.006+50));   // base noise along the centerline
-  const R=14;                                                              // smooth -> a gentle ribbon, not jagged
-  for(let i=0;i<SAMPLES;i++){ let s=0; for(let k=-R;k<=R;k++) s+=raw[((i+k)%SAMPLES+SAMPLES)%SAMPLES];
-    sampleElev[i]=((s/(2*R+1))-0.42)*roadAmp; }
+  const R=12;
+  for(let i=0;i<SAMPLES;i++){ const u=i/SAMPLES;
+    let s=0; for(let k=-R;k<=R;k++) s+=raw[((i+k)%SAMPLES+SAMPLES)%SAMPLES];
+    const noiseH=(s/(2*R+1))-0.42;
+    const hills=Math.sin(u*Math.PI*2*3)*0.5 + Math.sin(u*Math.PI*2*5+1.3)*0.2;        // 3 deliberate rolling crests + undulation (continuous around the loop)
+    sampleElev[i]=(noiseH*1.05 + hills*0.5)*roadAmp; }
+  const tmp=sampleElev.slice(), R2=7;                                                  // wrap-smooth -> gentle, drivable grades (not jagged)
+  for(let i=0;i<SAMPLES;i++){ let s=0; for(let k=-R2;k<=R2;k++) s+=tmp[((i+k)%SAMPLES+SAMPLES)%SAMPLES]; sampleElev[i]=s/(2*R2+1); }
 }
 function roadElevAt(idx){ return sampleElev.length? (sampleElev[((idx%SAMPLES)+SAMPLES)%SAMPLES]||0) : 0; }
 function roadElevExact(px, pz, idx){     // INTERPOLATED road elevation at the car's exact along-track position (no lag, no steps)
@@ -717,22 +722,22 @@ const TERRAIN={ coast:{amp:15,biome:'coast'}, desert:{amp:44,biome:'desert'}, fo
 const TRACKS=[
   { name:'GOLDEN MILE', sub:'DOWNTOWN · GOLDEN HOUR', theme:'city', groundHex:'#33363d', fog:0xe6885f,
     sky:{top:0x3a2160,bot:0xff9a5a,sun:0xfff2c0}, sun:[-0.5,0.12,-0.85],
-    ctrl:[[-165,-118],[80,-132],[168,-85],[178,35],[152,85],[180,135],[60,170],[-120,162],[-180,90],[-170,-45]] },
+    ctrl:[[-180,-120],[160,-130],[190,-80],[185,60],[150,125],[70,105],[20,140],[-60,120],[-160,130],[-192,75],[-185,-50]] },
   { name:'OCEAN DRIVE', sub:'SUNSET COAST · PALM SWEEP', theme:'coast', groundHex:'#cdab6e', fog:0xffc890, water:-4,
     sky:{top:0x2a55a0,bot:0xffb878,sun:0xfff0c0}, sun:[0.45,0.10,-0.88],
-    ctrl:[[-198,-10],[-150,-145],[10,-170],[140,-145],[205,-55],[135,20],[205,95],[120,165],[-30,182],[-150,150],[-200,60]] },
+    ctrl:[[-185,-40],[-110,-150],[60,-175],[185,-110],[150,-20],[200,90],[90,170],[-70,175],[-175,95],[-150,10],[-195,-30]] },
   { name:'THE DOCKS', sub:'INDUSTRIAL · CARGO CIRCUIT', theme:'docks', groundHex:'#2c2e34', fog:0xbcd6ea,
     sky:{top:0x2f7fd0,bot:0xd2e8f7,sun:0xfff4e0}, sun:[-0.5,0.34,-0.78],   // bright blue daytime sky + clouds (was industrial grey)
-    ctrl:[[-160,-110],[70,-150],[165,-105],[150,-5],[188,75],[110,150],[-40,162],[-150,150],[-188,40],[-175,-50]] },
+    ctrl:[[-175,-115],[40,-130],[60,-65],[160,-80],[185,30],[110,55],[150,150],[-40,160],[-65,80],[-175,95]] },
   { name:'SUNSET BEACH', sub:'GOLDEN SANDS · OCEAN', theme:'beach', groundHex:'#e8d2a0', fog:0xbfe0e8, water:-6,
     sky:{top:0x2a8fd8,bot:0xcfeeff,sun:0xfff4d0}, sun:[0.3,0.18,-0.9],
-    ctrl:[[-180,-50],[-95,-155],[65,-168],[180,-95],[145,-20],[198,60],[105,150],[-25,178],[-135,150],[-198,40]] },
+    ctrl:[[-180,-55],[-50,-150],[140,-150],[195,-55],[130,-15],[175,80],[60,165],[-110,150],[-178,35]] },
   { name:'PINE PASS', sub:'FOREST · MOUNTAIN TWISTS', theme:'forest', groundHex:'#3f5a34', fog:0x9ab0a0,
     sky:{top:0x2a6abf,bot:0xbfe0f0,sun:0xffffff}, sun:[-0.4,0.32,-0.7],
-    ctrl:[[-150,-110],[15,-150],[150,-118],[188,-15],[150,55],[188,120],[55,166],[-95,150],[-174,68],[-176,-52]] },
+    ctrl:[[-150,-125],[-20,-145],[60,-100],[150,-135],[185,-40],[120,20],[180,95],[70,150],[-30,110],[-95,165],[-170,85],[-110,5],[-165,-55]] },
   { name:'ALPINE', sub:'SNOW PEAKS · ICE PASS', theme:'snow', groundHex:'#e8eef5', fog:0xdfeaf2,
     sky:{top:0x4a6a9a,bot:0xdce8f4,sun:0xffffff}, sun:[0.2,0.34,-0.78],
-    ctrl:[[-160,-100],[-15,-150],[140,-128],[190,-25],[120,42],[186,112],[55,168],[-95,150],[-176,62],[-178,-58]] },
+    ctrl:[[-170,-100],[80,-132],[175,-95],[185,15],[120,55],[175,120],[40,150],[-70,128],[-150,150],[-185,30],[-150,-50]] },
 ];
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99, menuT = 0;
@@ -2342,9 +2347,12 @@ function updateCar(c, inp, dt){
         sparks.emit(c.pos.x,0.5,c.pos.y,(Math.random()-.5)*4,1,(Math.random()-.5)*4,0.3,9);
         if(raceTime-(c._thudT||-1)>0.25){ c._thudT=raceTime; audio&&audio.thud(clamp(vOut/40,0.3,1)); }
         if(navigator.vibrate){ try{navigator.vibrate(20);}catch(e){} } }
-      if((!c.isPlayer || autoDrive) && c.vel.length()<3){    // un-wedge a slow AI (or auto-driving player): steer back parallel + nudge forward
-        const t=sampleTan[c.trackIdx]; c.heading += angleDiff(Math.atan2(t.x,t.y), c.heading)*Math.min(1,dt*4);
-        c.vel.x += Math.sin(c.heading)*7*dt; c.vel.y += Math.cos(c.heading)*7*dt; }
+      if((!c.isPlayer || autoDrive) && c.vel.length()<3){    // un-wedge a slow AI (or auto-driving player): peel off the wall toward the centerline, then nudge forward
+        const t=sampleTan[c.trackIdx], p=samplePts[c.trackIdx];
+        const along=Math.atan2(t.x,t.y), toCtr=Math.atan2(p.x-c.pos.x, p.y-c.pos.y);
+        const aimH = c.trackDist>5 ? toCtr : along;          // pinned to the curb -> aim back to center; otherwise just realign along the track
+        c.heading += angleDiff(aimH, c.heading)*Math.min(1,dt*5);
+        c.vel.x += Math.sin(c.heading)*8.5*dt; c.vel.y += Math.cos(c.heading)*8.5*dt; }
     }
   }
 
@@ -2423,22 +2431,28 @@ function onLapComplete(c){
    AI input
    ========================================================================= */
 function aiInput(c){
-  const aheadI=(c.trackIdx+26)%SAMPLES, farI=(c.trackIdx+50)%SAMPLES;
-  const n=sampleNorm[aheadI], a=samplePts[aheadI];
+  const speed=c.vel.length();
+  // how hard the track bends over the next stretch (heading change samples +6..+30 ahead)
+  const tNear=sampleTan[(c.trackIdx+6)%SAMPLES], tMid=sampleTan[(c.trackIdx+30)%SAMPLES];
+  const bend=Math.abs(angleDiff(Math.atan2(tMid.x,tMid.y), Math.atan2(tNear.x,tNear.y)));
+  // ADAPTIVE lookahead: far on straights, SHORT on sharp corners so we track the apex instead of aiming across it into the wall
+  const aim=Math.round(clamp(15 + speed*0.5 - bend*32, 9, 44));
+  const aheadI=(c.trackIdx+aim)%SAMPLES, a=samplePts[aheadI], n=sampleNorm[aheadI];
   const tx=a.x+n.x*c.lineOffset, tz=a.y+n.y*c.lineOffset;
   const desired=Math.atan2(tx-c.pos.x, tz-c.pos.y);
   const diff=angleDiff(desired, c.heading);
-  const steer=clamp(diff*1.9,-1,1);
-  // sharpness of the corner ahead
-  const f=samplePts[farI];
-  const curve=Math.abs(angleDiff(Math.atan2(f.x-tx, f.y-tz), desired));
-  const speed=c.vel.length();
-  let brake = curve>0.55 && speed>26;
-  if(curve>0.55 && !c._inCorner){ c._inCorner=true; c._missThis = !window.__auto && Math.random()<(c.aiMiss||0); }   // decide the miss ONCE per corner (not every frame)
-  else if(curve<0.3) c._inCorner=false;
-  const brakeMul = (brake && c._missThis) ? 0.4 : 1;   // misjudge = brake late/soft -> wide line, not an off-track excursion
+  const steer=clamp(diff*2.3,-1,1);                                  // a touch more steering authority to make tight corners
+  // sharpest of (the bend we measured) and (the kink just past the aim point)
+  const farI=(c.trackIdx+Math.round(aim*1.6)+8)%SAMPLES, f=samplePts[farI];
+  const curve=Math.max(bend, Math.abs(angleDiff(Math.atan2(f.x-tx, f.y-tz), desired)));
+  // brake toward a corner-appropriate speed (sharper corner -> slower) instead of a single threshold
+  const targetSpd=clamp(64 - curve*70, 17, 64);
+  let brake = speed > targetSpd+3;
+  if(curve>0.5 && !c._inCorner){ c._inCorner=true; c._missThis = !window.__auto && Math.random()<(c.aiMiss||0); }   // decide the miss ONCE per corner (not every frame)
+  else if(curve<0.28) c._inCorner=false;
+  const brakeMul = (brake && c._missThis) ? 0.5 : (curve>0.7 ? 1.6 : 1);   // miss = brake soft (wide line); very sharp = brake hard so it actually makes the turn
   const boostHard = c.isRival ? 22 : 30;                                                     // the rival pushes boost harder
-  return { throttle:!brake, brake, brakeMul, steer, drift: curve>0.6 && speed>30, boost: !brake && curve<0.12 && c.boost>boostHard };
+  return { throttle:!brake, brake, brakeMul, steer, drift: curve>0.62 && speed>30, boost: !brake && curve<0.1 && c.boost>boostHard };
 }
 
 /* =========================================================================
