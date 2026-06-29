@@ -397,6 +397,7 @@
         <div class="trackBtn" data-i="3"><div class="ic">🏖️</div><b>SUNSET BEACH</b><span>Golden Sands</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
         <div class="trackBtn" data-i="4"><div class="ic">🌲</div><b>PINE PASS</b><span>Forest</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
         <div class="trackBtn" data-i="5"><div class="ic">🏔️</div><b>ALPINE</b><span>Snow Peaks</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
+        <div class="trackBtn" data-i="6"><div class="ic">🏜️</div><b>DUST DEVIL</b><span>Desert</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
       </div>
     </div>
     <div class="mPanel" id="panel-garage">
@@ -739,12 +740,15 @@ const TRACKS=[
   { name:'ALPINE', sub:'SNOW PEAKS · ICE PASS', theme:'snow', groundHex:'#e8eef5', fog:0xdfeaf2,
     sky:{top:0x4a6a9a,bot:0xdce8f4,sun:0xffffff}, sun:[0.2,0.34,-0.78],
     ctrl:[[-170,-100],[80,-132],[175,-95],[185,15],[120,55],[175,120],[40,150],[-70,128],[-150,150],[-185,30],[-150,-50]] },
+  { name:'DUST DEVIL', sub:'DESERT · CANYON RUN', theme:'desert', groundHex:'#c89a5a', fog:0xe8b878,
+    sky:{top:0x3a4a86,bot:0xf0a860,sun:0xfff0c0}, sun:[0.4,0.16,-0.85],
+    ctrl:[[-195,-60],[-60,-160],[130,-150],[200,-40],[130,25],[195,110],[60,170],[-110,160],[-190,60],[-130,0],[-200,-30]] },
 ];
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99, menuT = 0;
 let champ = { active:false, order:[0,3,5,2,4,1], round:0, points:[] };   // championship: track sequence + points per car
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
-const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine)
+const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert)
 let difficulty='normal';
 const DIFF={ easy:{base:0.95, cap:1.10}, normal:{base:1.0, cap:1.18}, hard:{base:1.07, cap:1.26} };
 let aiCap=1.14;   // band ceiling, set from difficulty in placeGrid
