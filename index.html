@@ -1819,34 +1819,50 @@ function attachUpgrades(rig, carIdx){
   const base=new THREE.Color(rig.bodyColor!=null?rig.bodyColor:0x222428);
   const bodyKit=new THREE.MeshStandardMaterial({color:base.clone().multiplyScalar(0.92), metalness:0.5, roughness:0.28, envMapIntensity:0.9, normalMap:flakeTex(), normalScale:new THREE.Vector2(0.15,0.15)});  // tinted to the car = molded look
   const carbon=new THREE.MeshStandardMaterial({color:0x0c0c0f, metalness:0.3, roughness:0.45});
-  const kit=new THREE.Group(); kit.rotation.y=d.yaw; g.add(kit);   // match the model yaw so parts align with the car's +Z forward
+  const kit=new THREE.Group(); kit.rotation.y=d.yaw; g.add(kit); g.updateWorldMatrix(true,true);   // match model yaw; matrices fresh for surface raycasts
   const add=(geo,mat)=>{ const m=new THREE.Mesh(geo,mat); m.castShadow=sh; kit.add(m); return m; };
   const dome=(mat)=>add(_domeGeo,mat);
+  // raycast the car's ACTUAL mesh so parts sit on the real surface per-car (not on the bounding box -> no more hovering)
+  const body=rig.chassis, _ray=new THREE.Raycaster(), _o=new THREE.Vector3(), _t=new THREE.Vector3(), _dn=new THREE.Vector3(0,-1,0);
+  const surfY=(lx,lz,fb)=>{ if(!body) return fb; kit.localToWorld(_o.set(lx, top+3, lz)); _ray.set(_o,_dn);
+    const h=_ray.intersectObject(body,true); return h.length? kit.worldToLocal(h[0].point.clone()).y : fb; };
+  const surfX=(sign,lz,ly,fb)=>{ if(!body) return fb; kit.localToWorld(_o.set(sign*(x0+1.5), ly, lz)); kit.localToWorld(_t.set(0, ly, lz));
+    _ray.set(_o, _t.sub(_o).normalize()); const h=_ray.intersectObject(body,true); return h.length? Math.abs(kit.worldToLocal(h[0].point.clone()).x) : fb; };
   const placeGLB=(name,axis,target,mat,x,y,z,rotX)=>{                 // place a sculpted part, uniform-scaled by one axis to fit the car
     const geo=kitPartGeo[name]; if(!geo) return null;
     if(!geo.boundingBox) geo.computeBoundingBox(); const s=new THREE.Vector3(); geo.boundingBox.getSize(s);
     const dim=axis==='z'?s.z:axis==='y'?s.y:s.x, k=target/(dim||1);
     const m=new THREE.Mesh(geo,mat); m.castShadow=sh; m.scale.setScalar(k); m.position.set(x,y,z); if(rotX) m.rotation.x=rotX; kit.add(m); return m; };
-  // ENGINE -> sculpted GT wing (blade + uprights + endplates) on the rear deck + low hood dome
+  // ENGINE -> GT wing mounted on the car's REAL rear-deck surface (raycast) so it never floats (scoop removed - it hovered on sloped hoods)
   if(u.eng>0){ const s=u.eng;
-    if(kitPartGeo.spoiler){ placeGLB('spoiler','x', W*0.86*(s>=2?1:0.82), bodyKit, 0, top-H*0.05, rear+Lz*0.05, 0); }
-    else { const span=W*0.84;                                          // procedural fallback if the GLB hasn't loaded
+    const wingZ=rear*0.72;                                             // deck = HIGHEST surface AT the wing's z (so a wing never sinks into a pickup bed nor floats on the cabin)
+    const deckY=Math.max(surfY(0,wingZ,top*0.5), surfY(W*0.25,wingZ,-9), surfY(-W*0.25,wingZ,-9));
+    if(kitPartGeo.spoiler){ const geo=kitPartGeo.spoiler; if(!geo.boundingBox) geo.computeBoundingBox();
+      const gs=new THREE.Vector3(); geo.boundingBox.getSize(gs); const k=W*0.86*(s>=2?1:0.82)/(gs.x||1);
+      const m=new THREE.Mesh(geo, bodyKit); m.castShadow=sh; m.scale.setScalar(k);
+      m.position.set(0, deckY - geo.boundingBox.min.y*k - H*0.06, wingZ); kit.add(m);   // uprights sink slightly INTO the real deck = bolted, no gap
+    } else { const span=W*0.84;                                         // procedural fallback if the GLB hasn't loaded
       const af=new THREE.Shape(); af.moveTo(-0.5,0); af.quadraticCurveTo(0,0.17,0.5,0.03); af.quadraticCurveTo(0,-0.07,-0.5,0);
       const wingGeo=new THREE.ExtrudeGeometry(af,{depth:span,bevelEnabled:true,bevelThickness:0.02,bevelSize:0.02,bevelSegments:2,steps:1});
       wingGeo.rotateY(Math.PI/2); wingGeo.center(); wingGeo.scale(0.62,0.62, s>=2?1:0.55);
-      const wg=new THREE.Group(); wg.position.set(0, top-H*0.12, rear+Lz*0.06);
+      const wg=new THREE.Group(); wg.position.set(0, deckY+H*0.24, wingZ);
       const wing=new THREE.Mesh(wingGeo, bodyKit); wing.castShadow=sh; wg.add(wing);
-      for(const sx of [-1,1]){ const mnt=new THREE.Mesh(rbox(0.07,H*0.36,0.13,0.03), carbon); mnt.position.set(sx*span*0.32, -H*0.18, 0.02); wg.add(mnt); }
+      for(const sx of [-1,1]){ const mnt=new THREE.Mesh(rbox(0.07,H*0.34,0.13,0.03), carbon); mnt.position.set(sx*span*0.32, -H*0.15, 0.02); wg.add(mnt); }
       if(s>=2) for(const sx of [-1,1]){ const ep=new THREE.Mesh(rbox(0.025,0.2,0.34,0.05), carbon); ep.position.set(sx*span*0.5,0.02,0); wg.add(ep); }
       kit.add(wg); }
-    const scoop=dome(bodyKit); scoop.scale.set(W*0.16, H*(0.07+0.03*s), Lz*0.1); scoop.position.set(0, top-H*0.05, front-Lz*0.28);   // low hood bulge
   }
   // ENGINE>=2 -> ground-effect kit: sculpted front lip + side skirts + rear diffuser (procedural fallback)
   if(u.eng>=2){
     if(kitPartGeo.lip) placeGLB('lip','x', W*0.92, bodyKit, 0, floorY+H*0.05, front-Lz*0.04, 0);
     else add(rbox(W*0.92,0.05,0.32,0.06), bodyKit).position.set(0, floorY+H*0.05, front-Lz*0.03);
-    if(kitPartGeo.skirt) for(const sx of [-1,1]) placeGLB('skirt','z', Lz*0.5, bodyKit, sx*x0*0.95, floorY+H*0.12, midZ, 0);
-    else for(const sx of [-1,1]) add(rbox(0.07,H*0.12,Lz*0.5,0.035), bodyKit).position.set(sx*x0*0.95, floorY+H*0.12, midZ);
+    for(const side of [-1,1]){                                          // side skirt that follows THIS car's body side (raycast at door height = reliable hit)
+      const pos=[], idx=[];
+      for(let i=0;i<=8;i++){ const lz=rear*0.56 + (front*0.56-rear*0.56)*(i/8);
+        const ex=surfX(side, lz, H*0.33, x0*0.9), b=pos.length/3;
+        pos.push(side*(ex-0.05), floorY+H*0.2, lz,  side*(ex-0.01), floorY+H*0.03, lz);   // flush rocker molding (tucked just inside the body line, not a protruding shelf)
+        if(i>0){ const a=b-2; idx.push(a,a+1,b, a+1,b+1,b); } }
+      const gsk=new THREE.BufferGeometry(); gsk.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); gsk.setIndex(idx); gsk.computeVertexNormals();
+      const m=new THREE.Mesh(gsk, bodyKit); m.castShadow=sh; kit.add(m); }
     if(kitPartGeo.diffuser) placeGLB('diffuser','x', W*0.7, bodyKit, 0, floorY+H*0.07, rear+Lz*0.03, -0.18);
     else { const df=add(rbox(W*0.68,0.11,0.3,0.05), bodyKit); df.position.set(0, floorY+H*0.06, rear+Lz*0.03); df.rotation.x=-0.18;
       for(let f=0;f<4;f++){ const fin=add(rbox(0.03,0.11,0.3,0.012), carbon); fin.position.set((f-1.5)*W*0.16, floorY+H*0.06, rear+Lz*0.03); fin.rotation.x=-0.18; } }
@@ -1858,9 +1874,9 @@ function attachUpgrades(rig, carIdx){
     if(t>=3) for(const sx of [-1,1]){ const can=add(rbox(0.3,0.03,0.16,0.012), carbon); can.position.set(sx*x0*0.74, floorY+H*0.18, front-Lz*0.05); can.rotation.x=0.2; }
   }
   // NITROUS -> rounded bottles with domed caps, half-sunk into the rear deck + a molded cradle
-  if(u.nos>0){ const n=u.nos, by=top-H*0.16, bz=rear+Lz*0.13, blen=0.44+0.14*n;
+  if(u.nos>0){ const n=u.nos, bz=rear*0.62, blen=0.44+0.14*n, deckY=surfY(0, bz, top*0.45), by=deckY+0.1;   // on the real deck, not floating
     const bm=new THREE.MeshStandardMaterial({color:0x1a6cff, emissive:0x1f7cff, emissiveIntensity:n>=3?1.1:0.7, roughness:0.4, metalness:0.3});
-    if(n>=2) add(rbox(W*0.46,0.06,0.5,0.05), bodyKit).position.set(0, by-0.07, bz);
+    if(n>=2) add(rbox(W*0.46,0.06,0.5,0.05), bodyKit).position.set(0, by-0.08, bz);
     const xs = n>=2 ? [-1,1] : [0];
     for(const sx of xs){ const bot=add(new THREE.CylinderGeometry(0.09,0.09,blen,16), bm); bot.rotation.x=Math.PI/2; bot.position.set(sx*W*0.12, by, bz);
       for(const cz of [-1,1]){ const cap=dome(bm); cap.scale.setScalar(0.09); cap.rotation.x=cz>0?-Math.PI/2:Math.PI/2; cap.position.set(sx*W*0.12, by, bz+cz*blen/2); } }
