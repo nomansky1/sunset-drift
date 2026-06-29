@@ -1858,7 +1858,7 @@ function attachUpgrades(rig, carIdx){
   const W=d.W, H=d.H, Lz=d.Lz, x0=W/2;
   const top=H, floorY=0, rear=-Lz/2, front=Lz/2, midZ=0;             // car is centered at the rig origin, sitting on y=0
   const base=new THREE.Color(rig.bodyColor!=null?rig.bodyColor:0x222428);
-  const bodyKit=new THREE.MeshStandardMaterial({color:base.clone().multiplyScalar(0.92), metalness:0.5, roughness:0.28, envMapIntensity:0.9, normalMap:flakeTex(), normalScale:new THREE.Vector2(0.15,0.15)});  // tinted to the car = molded look
+  const bodyKit=new THREE.MeshPhysicalMaterial({color:base.clone().multiplyScalar(0.95), metalness:0.45, roughness:0.32, envMapIntensity:1.15, clearcoat:1.0, clearcoatRoughness:0.12, normalMap:flakeTex(), normalScale:new THREE.Vector2(0.12,0.12)});  // SAME clear-coat paint + colour as the car body -> parts blend in, not stuck-on
   const carbon=new THREE.MeshStandardMaterial({color:0x0c0c0f, metalness:0.3, roughness:0.45});
   const kit=new THREE.Group(); kit.rotation.y=d.yaw; g.add(kit); g.updateWorldMatrix(true,true);   // match model yaw; matrices fresh for surface raycasts
   const add=(geo,mat)=>{ const m=new THREE.Mesh(geo,mat); m.castShadow=sh; kit.add(m); return m; };
