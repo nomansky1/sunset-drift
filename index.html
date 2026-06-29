@@ -572,6 +572,46 @@ const CARS=[ {name:'DRIFTER', kind:'doge',                spd:70,  grip:88, pric
              {name:'MUSCLE',      kind:'glb', raw:'muscle',   yaw:0, spd:94, grip:66, price:1100},
              {name:'INTERCEPTOR', kind:'glb', raw:'police',   yaw:0, spd:86, grip:84, price:1300},
              {name:'GT',          kind:'glb', raw:'racecar',  yaw:0, spd:98, grip:70, price:1600} ];
+// Latin-American nationality theme: each car flies a country flag + the flag's colour resonates on the car (Puerto Rico first)
+const COUNTRIES=[
+  {name:'PUERTO RICO', key:'pr', col:0xed1c24}, {name:'DOMINICAN REP.', key:'do', col:0x002d62}, {name:'BRAZIL', key:'br', col:0x009b3a},
+  {name:'MEXICO', key:'mx', col:0x006847}, {name:'ARGENTINA', key:'ar', col:0x75aadb}, {name:'COLOMBIA', key:'co', col:0xfcd116},
+  {name:'VENEZUELA', key:'ve', col:0x00247d}, {name:'PERU', key:'pe', col:0xd91023}, {name:'CHILE', key:'cl', col:0x0039a6},
+  {name:'CUBA', key:'cu', col:0x002a8f}, {name:'ECUADOR', key:'ec', col:0xffdd00}, {name:'URUGUAY', key:'uy', col:0x0038a8} ];
+const _flagCache={};
+function flagCanvas(key){
+  const W=120,H=80, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
+  const star=(cx,cy,r,col)=>{ x.fillStyle=col; x.beginPath(); for(let i=0;i<10;i++){ const rr=i%2?r:r*0.45, a=-Math.PI/2+i*Math.PI/5; x.lineTo(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr);} x.closePath(); x.fill(); };
+  const hs=(cs)=>{ const sh=H/cs.length; cs.forEach((col,i)=>{ x.fillStyle=col; x.fillRect(0,i*sh,W,sh+1); }); };
+  const vs=(cs)=>{ const sw=W/cs.length; cs.forEach((col,i)=>{ x.fillStyle=col; x.fillRect(i*sw,0,sw+1,H); }); };
+  const tri=(col,w)=>{ x.fillStyle=col; x.beginPath(); x.moveTo(0,0); x.lineTo(w,H/2); x.lineTo(0,H); x.closePath(); x.fill(); };
+  switch(key){
+    case 'pr': hs(['#ed1c24','#fff','#ed1c24','#fff','#ed1c24']); tri('#0050a0',W*0.5); star(W*0.17,H/2,11,'#fff'); break;
+    case 'do': x.fillStyle='#002d62'; x.fillRect(0,0,W,H); x.fillStyle='#ce1126'; x.fillRect(W/2,0,W/2,H/2); x.fillRect(0,H/2,W/2,H/2); x.fillStyle='#fff'; x.fillRect(W*0.42,0,W*0.16,H); x.fillRect(0,H*0.4,W,H*0.2); break;
+    case 'br': x.fillStyle='#009b3a'; x.fillRect(0,0,W,H); x.fillStyle='#fedf00'; x.beginPath(); x.moveTo(W/2,H*0.13); x.lineTo(W*0.87,H/2); x.lineTo(W/2,H*0.87); x.lineTo(W*0.13,H/2); x.closePath(); x.fill(); x.fillStyle='#002776'; x.beginPath(); x.arc(W/2,H/2,H*0.2,0,7); x.fill(); break;
+    case 'mx': vs(['#006847','#fff','#ce1126']); x.fillStyle='#7a5230'; x.beginPath(); x.arc(W/2,H/2,H*0.13,0,7); x.fill(); break;
+    case 'ar': hs(['#75aadb','#fff','#75aadb']); x.fillStyle='#f6b40e'; x.beginPath(); x.arc(W/2,H/2,H*0.13,0,7); x.fill(); break;
+    case 'co': x.fillStyle='#fcd116'; x.fillRect(0,0,W,H/2); x.fillStyle='#003893'; x.fillRect(0,H/2,W,H/4); x.fillStyle='#ce1126'; x.fillRect(0,H*0.75,W,H/4); break;
+    case 've': hs(['#ffcc00','#00247d','#cf142b']); for(let i=0;i<7;i++){ const a=Math.PI*1.18+i*0.105; star(W/2+Math.cos(a)*W*0.2,H*0.5+Math.sin(a)*H*0.16,3.5,'#fff'); } break;
+    case 'pe': vs(['#d91023','#fff','#d91023']); break;
+    case 'cl': x.fillStyle='#fff'; x.fillRect(0,0,W,H/2); x.fillStyle='#d52b1e'; x.fillRect(0,H/2,W,H/2); x.fillStyle='#0039a6'; x.fillRect(0,0,W*0.33,H/2); star(W*0.165,H/4,9,'#fff'); break;
+    case 'cu': hs(['#002a8f','#fff','#002a8f','#fff','#002a8f']); tri('#cf142b',W*0.42); star(W*0.14,H/2,9,'#fff'); break;
+    case 'ec': x.fillStyle='#ffdd00'; x.fillRect(0,0,W,H/2); x.fillStyle='#034ea2'; x.fillRect(0,H/2,W,H/4); x.fillStyle='#ed1c24'; x.fillRect(0,H*0.75,W,H/4); break;
+    case 'uy': for(let i=0;i<9;i++){ x.fillStyle=(i%2)?'#0038a8':'#fff'; x.fillRect(0,i*H/9,W,H/9+1);} x.fillStyle='#fff'; x.fillRect(0,0,W*0.4,H*0.56); x.fillStyle='#fcd116'; x.beginPath(); x.arc(W*0.2,H*0.28,H*0.1,0,7); x.fill(); break;
+    default: x.fillStyle='#888'; x.fillRect(0,0,W,H);
+  }
+  x.strokeStyle='rgba(0,0,0,.35)'; x.lineWidth=2; x.strokeRect(1,1,W-2,H-2); return c;
+}
+function flagTex(key){ if(_flagCache[key]) return _flagCache[key]; const t=new THREE.CanvasTexture(flagCanvas(key)); if('encoding' in t) t.encoding=THREE.sRGBEncoding; t.anisotropy=4; _flagCache[key]=t; return t; }
+const _flagURL={}; function flagURL(key){ if(!_flagURL[key]) _flagURL[key]=flagCanvas(key).toDataURL(); return _flagURL[key]; }
+// flag decals on the car (doors + hood) + the flag's primary colour drives the upgrade kit
+function applyLivery(rig, carIdx){
+  const co=COUNTRIES[carIdx%COUNTRIES.length]; if(!co) return; rig.bodyColor=co.col;
+  const d=rig.dims||{W:2,H:1.5,Lz:4.6}, mat=new THREE.MeshBasicMaterial({map:flagTex(co.key), side:THREE.DoubleSide, toneMapped:false});
+  const g=rig.group, fw=Math.min(1.5, d.Lz*0.19), fh=fw*0.66;
+  for(const sx of [-1,1]){ const fl=new THREE.Mesh(new THREE.PlaneGeometry(fw,fh), mat); fl.position.set(sx*d.W*0.52, d.H*0.46, 0); fl.rotation.y=sx>0?Math.PI/2:-Math.PI/2; g.add(fl); }
+  const hf=new THREE.Mesh(new THREE.PlaneGeometry(fw*0.9,fh*0.9), mat); hf.position.set(0, d.H*0.64, d.Lz*0.33); hf.rotation.x=-Math.PI*0.46; g.add(hf);
+}
 let fleetRaw={}, selectedCar=0, ownedCars=[];
 let kitPartGeo={};                         // Blender-sculpted upgrade parts (spoiler/diffuser/lip/skirt) loaded from parts.glb
 function loadOwned(){ try{ const o=JSON.parse(localStorage.getItem('sd_owned')); ownedCars=Array.isArray(o)?o:[]; }catch(e){ ownedCars=[]; }
@@ -591,7 +631,8 @@ function carMul(i){ const c=CARS[i]||CARS[0], u=upgOf(i);
 function renderShop(){                                   // menu car panel: name, stats, owned/unlock, RACE state
   const i=selectedCar, c=CARS[i], nm=document.getElementById('carName'); if(!nm) return;
   const st=document.getElementById('carStatus'), btn=document.getElementById('startBtn');
-  nm.textContent='🏎 '+c.name;
+  const co=COUNTRIES[i%COUNTRIES.length];
+  nm.innerHTML='<img src="'+flagURL(co.key)+'" style="height:0.8em;vertical-align:-1px;margin-right:7px;border:1px solid rgba(255,255,255,.45);border-radius:2px"> '+co.name+' <span style="opacity:.55;font-size:.66em;letter-spacing:1px">'+c.name+'</span>';
   const ss=document.getElementById('statSpd'), sg=document.getElementById('statGrip');
   if(ss&&sg){ ss.style.width='0%'; sg.style.width='0%';                       // replay the fill from empty on each car switch
     requestAnimationFrame(()=>{ ss.style.width=c.spd+'%'; sg.style.width=c.grip+'%'; }); }
@@ -1913,6 +1954,7 @@ function upgradeCars(){
     const def = c.isPlayer ? CARS[selectedCar] : CARS[(ci*2+1)%CARS.length];   // AI variety
     if(def.kind==='glb' && fleetRaw[def.raw]) buildFleetCar(rig, fleetRaw[def.raw], def.yaw||0);
     else buildDogeCar(rig, c.color);
+    applyLivery(rig, c.isPlayer?selectedCar:((ci*2+1)%CARS.length));   // country flag decals + flag-colour theme on every car
     if(c.isPlayer) attachUpgrades(rig, selectedCar);         // visible performance kits (player car only)
     if(rig.flames) rig.flames.forEach(f=>rig.group.add(f));   // re-attach exhaust flames (group was wiped above)
     if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
