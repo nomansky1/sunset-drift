@@ -2475,16 +2475,18 @@ let camView=0;
 function loadCamView(){ try{ camView=Math.min(CAM_VIEWS.length-1, Math.max(0, parseInt(localStorage.getItem('sd_cam'))||0)); }catch(e){ camView=0; } }
 function cycleCam(){ camView=(camView+1)%CAM_VIEWS.length; try{ localStorage.setItem('sd_cam',camView); }catch(e){}
   popup('📷 '+CAM_VIEWS[camView].name+' VIEW', '#7ce0ff'); }
+let _scy=null;   // smoothed camera elevation -> no pitch-snap over hill crests
 function updateCamera(dt){
   const V=CAM_VIEWS[camView]||CAM_VIEWS[0];
   const c=player; _f.set(Math.sin(c.heading), Math.cos(c.heading));
   const amt=(c.boosting?0.5:0)+camShake; camShake=Math.max(0,camShake-dt*3);
   const sx=amt?(Math.random()-.5)*amt:0, sz=amt?(Math.random()-.5)*amt:0;
   const cy=c.visY||0;                                          // follow the road elevation
-  _cd.set(c.pos.x - _f.x*V.dist + sx, V.height + cy + (c.boosting?-0.4:0), c.pos.y - _f.y*V.dist + sz);
+  _scy = (_scy==null) ? cy : _scy + (cy-_scy)*(1-Math.exp(-8*dt));   // smooth the vertical follow so crests/dips don't jerk the view
+  _cd.set(c.pos.x - _f.x*V.dist + sx, V.height + _scy + (c.boosting?-0.4:0), c.pos.y - _f.y*V.dist + sz);
   const k=1-Math.exp(-CONFIG.camLerp*dt);
   camera.position.lerp(_cd, k);
-  _cl.set(c.pos.x + _f.x*V.look, 1.2+cy, c.pos.y + _f.y*V.look);
+  _cl.set(c.pos.x + _f.x*V.look, 1.2+_scy, c.pos.y + _f.y*V.look);
   camera.lookAt(_cl);
   const targetFov=(c.boosting?V.fov+12:V.fov) + Math.min(player.vel.length()/CONFIG.topSpeed,1)*13;   // stronger FOV creep with speed
   camera.fov=lerp(camera.fov,targetFov,0.08); camera.updateProjectionMatrix();
@@ -2612,7 +2614,7 @@ function startGame(){
   document.getElementById('pauseBtn').classList.add('show'); document.getElementById('camBtn').classList.add('show'); document.getElementById('pauseMenu').classList.add('hidden');
   skidPool.forEach(m=>m.visible=false);
   // snap camera behind player immediately
-  _f.set(Math.sin(player.heading),Math.cos(player.heading));
+  _f.set(Math.sin(player.heading),Math.cos(player.heading)); _scy=null;   // reset smoothed cam elevation (no carry-over between tracks)
   camera.position.set(player.pos.x-_f.x*CONFIG.camDist, CONFIG.camHeight, player.pos.y-_f.y*CONFIG.camDist);
 }
 function hidePauseUI(){ const pb=document.getElementById('pauseBtn'); if(pb) pb.classList.remove('show');
@@ -2737,7 +2739,9 @@ function flashIf(n){ n=Math.min(n,3); if(n!==lastFlash && n>=1){ lastFlash=n; fl
 function resolveCollisions(){
   for(let i=0;i<cars.length;i++) for(let j=i+1;j<cars.length;j++){
     const a=cars[i], b=cars[j]; _v.set(b.pos.x-a.pos.x, b.pos.y-a.pos.y); const d=_v.length();
-    if(d<3.0 && d>0.001){ _v.multiplyScalar(1/d); const push=(3.0-d)*0.5;
+    const fx=Math.sin(a.heading), fz=Math.cos(a.heading), along=d>0.001?Math.abs((_v.x*fx+_v.y*fz)/d):1;
+    const minSep=2.5+2.4*along;          // oriented: ~2.5 side-by-side (close racing stays close), ~4.9 nose-to-tail (cars are long -> no visual merge)
+    if(d<minSep && d>0.001){ _v.multiplyScalar(1/d); const push=(minSep-d)*0.5;
       a.pos.addScaledVector(_v,-push); b.pos.addScaledVector(_v,push);
       const va=a.vel.dot(_v), vb=b.vel.dot(_v);
       a.vel.addScaledVector(_v,(vb-va)*0.3); b.vel.addScaledVector(_v,(va-vb)*0.3);
@@ -2745,7 +2749,7 @@ function resolveCollisions(){
         const mx=(a.pos.x+b.pos.x)/2, mz=(a.pos.y+b.pos.y)/2;
         sparks.emit(mx,0.6,mz,(Math.random()-.5)*5,1.2,(Math.random()-.5)*5,0.3,9);
         if(navigator.vibrate){ try{navigator.vibrate(25);}catch(e){} } }
-    } else if((a.isPlayer||b.isPlayer) && d>=3.0 && d<5.4 && player.vel.length()>20){   // NEAR MISS: brush past fast w/o hitting
+    } else if((a.isPlayer||b.isPlayer) && d>=minSep && d<minSep+2.4 && player.vel.length()>20){   // NEAR MISS: brush past fast w/o hitting
       const ai=a.isPlayer?b:a;
       if(raceTime-(ai._nmT||-9)>1.4){ ai._nmT=raceTime; combo++; addScore(60,'NEAR MISS','#7ce0ff'); }
     }
