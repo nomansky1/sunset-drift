@@ -1993,9 +1993,10 @@ function attachUpgrades(rig, carIdx){
       : [[-1,-1],[-1,1],[1,-1],[1,1]].map(([sx,sz])=>({x:sx*x0*0.9, y:Lz*0.086, z:sz*Lz*0.32, rad:Lz*0.09, outerX:x0*0.98}));
     if(kitPartGeo.rim){ const rimMat=new THREE.MeshPhysicalMaterial({color:0xc8cdd6, metalness:0.95, roughness:0.2, envMapIntensity:1.5, clearcoat:0.5});
       const rgeo=kitPartGeo.rim; if(!rgeo.boundingBox) rgeo.computeBoundingBox(); const rsz=new THREE.Vector3(); rgeo.boundingBox.getSize(rsz);
-      wheels.forEach(w=>{ const rk=(w.rad*1.45)/(rsz.y||1); const rm=new THREE.Mesh(rgeo, rimMat); rm.castShadow=sh; rm.scale.setScalar(rk);
-        rm.position.set(Math.sign(w.x)*(w.outerX-0.04), w.y, w.z); if(w.x<0) rm.rotation.y=Math.PI; kit.add(rm); }); }
-    wheels.forEach(w=>{ const fl=add(rbox(0.08+0.015*t, w.rad*1.4, w.rad*2.2, 0.05), bodyKit); fl.position.set(Math.sign(w.x)*(w.outerX-0.06), w.y+w.rad*0.55, w.z); });   // fender flares over the real arches
+      wheels.forEach(w=>{ const rk=(w.rad*1.6)/(rsz.y||1); const rm=new THREE.Mesh(rgeo, rimMat); rm.castShadow=sh; rm.scale.setScalar(rk);
+        rm.position.set(Math.sign(w.x)*(w.outerX+0.02), w.y, w.z); if(w.x<0) rm.rotation.y=Math.PI; kit.add(rm); }); }   // bigger + layered ON the wheel face (covers the stock rim)
+    wheels.forEach(w=>{ const arch=add(new THREE.TorusGeometry(w.rad*1.06, w.rad*0.16, 6, 12, Math.PI), bodyKit);   // molded fender arch curving over the wheel (not a square panel)
+      arch.rotation.y=Math.PI/2; arch.position.set(Math.sign(w.x)*(w.outerX-0.06), w.y, w.z); });
     if(t>=3) for(const sx of [-1,1]){ const can=add(rbox(0.3,0.03,0.16,0.012), carbon); can.position.set(sx*x0*0.74, floorY+H*0.18, front-Lz*0.05); can.rotation.x=0.2; }
   }
   // NITROUS -> rounded bottles with domed caps, half-sunk into the rear deck + a molded cradle
