@@ -135,6 +135,7 @@
              background:linear-gradient(165deg, rgba(48,28,64,.6), rgba(16,9,26,.6)); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
              display:flex; flex-direction:column; align-items:center; min-width:90px; transition:.16s ease; cursor:pointer; position:relative; overflow:hidden; }
   .trackBtn .ic{ font-size:19px; line-height:1; margin-bottom:3px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
+  .trackBtn .ic.map{ font-size:0; margin-bottom:5px; } .trackBtn .ic.map svg{ display:block; }
   .trackBtn b{ font-size:min(3.4vw,13px); letter-spacing:.6px; }
   .trackBtn span{ font-size:min(2.7vw,10px); opacity:.6; margin-top:2px; }
   .trackBtn .dots{ margin-top:7px; display:flex; gap:3px; }
@@ -765,6 +766,23 @@ function renderTrackStars(){ document.querySelectorAll('.trackBtn').forEach(b=>{
   const s=trackStars[i]||0; el.innerHTML='<b>'+'★'.repeat(s)+'</b>'+'★'.repeat(3-s);
   let bt=b.querySelector('.cbest'); if(!bt){ bt=document.createElement('div'); bt.className='cbest'; b.appendChild(bt); }
   bt.textContent = trackBest[i]?('BEST '+fmt(trackBest[i])):''; }); }
+// mini circuit-map thumbnail per track card (drawn from the real ctrl spline) -> premium, shows the actual layout
+const TRACK_ACCENT={ city:'#ff9a4c', coast:'#ffc070', docks:'#5fd0ff', beach:'#7fe0ff', forest:'#8fd86a', snow:'#cfe6ff' };
+function trackThumb(ctrl, accent){
+  const v3=ctrl.map(p=>new THREE.Vector3(p[0],0,p[1]));
+  const pts=new THREE.CatmullRomCurve3(v3,true,'catmullrom',0.5).getSpacedPoints(72);
+  let mnx=1e9,mxx=-1e9,mnz=1e9,mxz=-1e9; pts.forEach(p=>{ if(p.x<mnx)mnx=p.x; if(p.x>mxx)mxx=p.x; if(p.z<mnz)mnz=p.z; if(p.z>mxz)mxz=p.z; });
+  const W=52,H=42,pad=6, sc=Math.min((W-pad*2)/((mxx-mnx)||1),(H-pad*2)/((mxz-mnz)||1));
+  const ox=(W-(mxx-mnx)*sc)/2-mnx*sc, oy=(H-(mxz-mnz)*sc)/2-mnz*sc;
+  let d=''; pts.forEach((p,i)=>{ d+=(i?'L':'M')+(p.x*sc+ox).toFixed(1)+' '+(p.z*sc+oy).toFixed(1); }); d+='Z';
+  const sx=(pts[0].x*sc+ox).toFixed(1), sy=(pts[0].z*sc+oy).toFixed(1);
+  return '<svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" fill="none">'
+    +'<path d="'+d+'" stroke="rgba(0,0,0,.5)" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>'
+    +'<path d="'+d+'" stroke="'+accent+'" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>'
+    +'<circle cx="'+sx+'" cy="'+sy+'" r="3.2" fill="#fff" stroke="'+accent+'" stroke-width="1.3"/></svg>';
+}
+function paintTrackThumbs(){ document.querySelectorAll('.trackBtn').forEach(b=>{ const i=+b.dataset.i, t=TRACKS[i]; if(!t) return;
+  const ic=b.querySelector('.ic'); if(ic && !ic.classList.contains('map')){ ic.classList.add('map'); ic.innerHTML=trackThumb(t.ctrl, TRACK_ACCENT[t.theme]||'#ffb13b'); } }); }
 function lapSplitsHTML(){ if(!lapTimes.length) return ''; let fast=1e9,fi=-1; lapTimes.forEach((t,i)=>{ if(t<fast){fast=t;fi=i;} });
   return '<div class="splits">'+lapTimes.map((t,i)=>'<span class="'+(i===fi?'fast':'')+'">L'+(i+1)+' '+fmt(t)+'</span>').join('')+'</div>'; }
 function animateCount(el, target, prefix, suffix){ if(!el) return; clearInterval(el._iv); const steps=28, inc=target/steps; let i=0;
@@ -3042,7 +3060,7 @@ function init(){
   const swapCar=(d)=>{ selectedCar=(selectedCar+d+CARS.length)%CARS.length; renderShop(); saveSelCar(); upgradeCars(); };
   document.getElementById('carPrev').addEventListener('click', e=>{ e.stopPropagation(); swapCar(-1); });
   document.getElementById('carNext').addEventListener('click', e=>{ e.stopPropagation(); swapCar(1); });
-  renderShop(); renderTrackStars();
+  renderShop(); renderTrackStars(); paintTrackThumbs();
   addEventListener('resize', onResize); onResize(); checkOrient();
   addEventListener('orientationchange', ()=>setTimeout(checkOrient,200));
 
