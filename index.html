@@ -631,8 +631,8 @@ const TRACKS=[
   { name:'OCEAN DRIVE', sub:'SUNSET COAST · PALM SWEEP', theme:'coast', groundHex:'#cdab6e', fog:0xffc890, water:-4,
     sky:{top:0x2a55a0,bot:0xffb878,sun:0xfff0c0}, sun:[0.45,0.10,-0.88],
     ctrl:[[-198,-10],[-150,-145],[10,-170],[140,-145],[205,-55],[135,20],[205,95],[120,165],[-30,182],[-150,150],[-200,60]] },
-  { name:'THE DOCKS', sub:'INDUSTRIAL · CARGO CIRCUIT', theme:'docks', groundHex:'#2c2e34', fog:0x8a8478,
-    sky:{top:0x2a3038,bot:0x9a8a78,sun:0xe8e0d0}, sun:[-0.6,0.18,-0.72],
+  { name:'THE DOCKS', sub:'INDUSTRIAL · CARGO CIRCUIT', theme:'docks', groundHex:'#2c2e34', fog:0xbcd6ea,
+    sky:{top:0x2f7fd0,bot:0xd2e8f7,sun:0xfff4e0}, sun:[-0.5,0.34,-0.78],   // bright blue daytime sky + clouds (was industrial grey)
     ctrl:[[-160,-110],[70,-150],[165,-105],[150,-5],[188,75],[110,150],[-40,162],[-150,150],[-188,40],[-175,-50]] },
   { name:'SUNSET BEACH', sub:'GOLDEN SANDS · OCEAN', theme:'beach', groundHex:'#e8d2a0', fog:0xbfe0e8, water:-6,
     sky:{top:0x2a8fd8,bot:0xcfeeff,sun:0xfff4d0}, sun:[0.3,0.18,-0.9],
@@ -1280,7 +1280,7 @@ function buildCity(rng){
     {name:'NEON BAR',      sign:'#8e2de2', wall:'#23262e', awn1:'#8e2de2', awn2:'#2a2a3a', text:'#ff5ad0'},
   ];
   const storeTex=BIZ.map(b=>makeStorefrontTexture(rng,b));
-  const towers=facadeTex.map(()=>[]), stores=storeTex.map(()=>[]), waterTowers=[], billboards=[], roofs=[];
+  const towers=facadeTex.map(()=>[]), stores=storeTex.map(()=>[]), waterTowers=[], billboards=[], roofs=[], sidewalks=[];
   const baseH=5, block=58, span=820, _c=new THREE.Color();
   for(let gx=-span; gx<=span; gx+=block) for(let gz=-span; gz<=span; gz+=block){
     const x=gx+(rng()-0.5)*8, z=gz+(rng()-0.5)*8;
@@ -1294,6 +1294,7 @@ function buildCity(rng){
     const ang = roadAngleAt(x,z) + (rng()<0.5?0:Math.PI/2) + (rng()-0.5)*0.12;   // face the street (along or across), slight jitter
     const qb=new THREE.Quaternion().setFromAxisAngle(_UP, ang);
     const baseMtx=new THREE.Matrix4().compose(new THREE.Vector3(x,0,z), qb, new THREE.Vector3(fw,baseH,fd)); stores[si].push({mtx:baseMtx,tint});
+    sidewalks.push({x,z,fw,fd,qb});                                  // raised concrete sidewalk slab around the building base
     const towerMtx=new THREE.Matrix4().compose(new THREE.Vector3(x,baseH,z), qb, new THREE.Vector3(fw*0.97,towerH,fd*0.97)); towers[fi].push({mtx:towerMtx,tint});
     if(towerH>14) roofs.push({x,z,top:baseH+towerH,fw:fw*0.97,fd:fd*0.97,ang,tall:towerH>30,rk:rng()});   // rooftops -> greebles (breaks the boxy skyline)
     if(towerH>26 && rng()>0.55) waterTowers.push({x,z,top:baseH+towerH});
@@ -1341,6 +1342,24 @@ function buildCity(rng){
     const bc=new THREE.InstancedMesh(bcGeo, bcMat, beacons.length);
     beacons.forEach((r,k)=>{ const h=3+r.rk*6; bc.setMatrixAt(k, _m.makeTranslation(r.x, r.top+h, r.z)); });
     bc.instanceMatrix.needsUpdate=true; scene.add(bc);
+  }
+  // ---- raised concrete sidewalks around building bases + planters (street life) ----
+  if(sidewalks.length){ const _m2=new THREE.Matrix4(), _s2=new THREE.Vector3(), _p2=new THREE.Vector3(), _qI=new THREE.Quaternion();
+    const swMat=new THREE.MeshStandardMaterial({color:0x9a9aa0, roughness:0.92});
+    const sw=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), swMat, sidewalks.length);
+    sidewalks.forEach((s,k)=>{ sw.setMatrixAt(k, _m2.compose(_p2.set(s.x,0.12,s.z), s.qb, _s2.set(s.fw+5.5,0.34,s.fd+5.5))); });
+    sw.instanceMatrix.needsUpdate=true; sw.receiveShadow=!isTouch; scene.add(sw);
+    const clutter=sidewalks.filter((s,i)=>(i%2)===0).slice(0,90);
+    const planterMat=new THREE.MeshStandardMaterial({color:0x4a4640, roughness:0.9});
+    const greenMat=new THREE.MeshStandardMaterial({color:0x3f7a3a, roughness:1, flatShading:true});
+    const pl=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), planterMat, clutter.length);
+    const bush=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.6,0), greenMat, clutter.length);
+    clutter.forEach((s,k)=>{ const dx=trackCentroid.x-s.x, dz=trackCentroid.y-s.z, dl=Math.hypot(dx,dz)||1;   // place toward the road side
+      const px=s.x+dx/dl*(s.fw*0.5+2), pz=s.z+dz/dl*(s.fd*0.5+2);
+      pl.setMatrixAt(k, _m2.compose(_p2.set(px,0.45,pz), _qI, _s2.set(0.9,0.9,0.9)));
+      bush.setMatrixAt(k, _m2.compose(_p2.set(px,1.1,pz), _qI, _s2.set(1,1,1))); });
+    pl.instanceMatrix.needsUpdate=bush.instanceMatrix.needsUpdate=true; pl.castShadow=bush.castShadow=!isTouch;
+    scene.add(pl); scene.add(bush);
   }
 }
 function buildStreetFurniture(rng){
@@ -1556,7 +1575,7 @@ function buildSky(){
   if(nightMode){ topC.setHex(0x05070f); botC.setHex(0x161d33); sunC.setHex(0xcfe0ff); }   // moonlit night
   const sunDir=new THREE.Vector3(TH.sun[0],TH.sun[1],TH.sun[2]).normalize(); sunDirV=sunDir;
   const th=currentTheme?currentTheme.theme:'city';
-  const cloudAmt = nightMode?0.12 : (th==='desert'?0.45 : th==='forest'?0.7 : th==='coast'?0.55 : th==='docks'?0.4 : 0.3);
+  const cloudAmt = nightMode?0.12 : (th==='desert'?0.45 : th==='forest'?0.7 : th==='coast'?0.55 : th==='docks'?0.62 : 0.3);
   const geo=new THREE.SphereGeometry(1400,32,20);
   const mat=new THREE.ShaderMaterial({ side:THREE.BackSide, depthWrite:false, fog:false,
     uniforms:{ top:{value:topC}, bot:{value:botC}, sunDir:{value:sunDir.clone()}, sunCol:{value:sunC}, cloud:{value:cloudAmt}, night:{value:nightMode?1:0}, uTime:{value:0}, lowq:{value:lowQuality?1:0} },
