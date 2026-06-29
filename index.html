@@ -643,6 +643,7 @@ function bodyDomColor(body, cm, key){ if(_bodyCol[key]) return _bodyCol[key];
   let best=null,bc=0; for(const k in area){ if(area[k]>bc){ bc=area[k]; best=k; } }
   _bodyCol[key]=best?best.split(',').map(Number):null; return _bodyCol[key]; }
 function paintCar(rig, hex, modelKey){ if(hex==null||!rig.chassis) return;
+  if(rig.paintMats && rig.paintMats.length){ const col=new THREE.Color(hex); rig.paintMats.forEach(m=>m.color.copy(col)); return; }   // procedural (doge) car: recolour body materials directly, glass untouched
   let body=null; rig.chassis.traverse(o=>{ if(o.isMesh&&/body/i.test(o.name||'')) body=o; });
   if(!body||!body.material.map||!body.material.map.image) return;
   const cm=colormapCanvas(body.material.map); if(!cm) return; const from=bodyDomColor(body, cm, modelKey); if(!from) return;
@@ -685,7 +686,7 @@ function renderShop(){                                   // menu car panel: name
 }
 function renderPaints(){                                  // garage paint-job picker (owned Kenney cars; recolours body, keeps glass)
   const host=document.getElementById('paintRow'); if(!host) return; const i=selectedCar;
-  if(!isOwned(i) || CARS[i].kind!=='glb'){ host.style.display='none'; host.innerHTML=''; return; }
+  if(!isOwned(i)){ host.style.display='none'; host.innerHTML=''; return; }
   host.style.display='flex'; const cur=paintJobs[i];
   host.innerHTML='<span class="paintLbl">PAINT</span>'+PAINTS.map(p=>{ const on=(p.hex==null?(cur==null):(cur===p.hex));
     const bg=p.hex==null?'':'background:#'+('000000'+p.hex.toString(16)).slice(-6);
@@ -2024,10 +2025,10 @@ function buildDogeCar(rig, color){
   rig.bodyColor=new THREE.Color(color).getHex();   // for the color-matched upgrade kit
   const asm=new THREE.Group();
   const chassis=new THREE.Group();
-  const body=carBodyRaw.clone();
+  const body=carBodyRaw.clone(); rig.paintMats=[];
   body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false;
     if(o.material){ const isBody=o.material.name==='body'; o.material=carPaint(o.material);     // glossy clear-coat paint
-      if(isBody){ o.material.color.set(color); o.material.metalness=0.42; o.material.roughness=0.34; o.material.normalMap=flakeTex(); o.material.normalScale=new THREE.Vector2(0.22,0.22); } } } });   // metallic-flake paint under the clear coat
+      if(isBody){ o.material.color.set(color); o.material.metalness=0.42; o.material.roughness=0.34; o.material.normalMap=flakeTex(); o.material.normalScale=new THREE.Vector2(0.22,0.22); rig.paintMats.push(o.material); } } } });   // metallic-flake paint under the clear coat (paintMats = recolourable body for the paint job)
   chassis.add(body); asm.add(chassis);
   const wheels=[], front=[];
   CAR_WHEELS.forEach(wp=>{ const wg=new THREE.Group(); wg.position.set(wp.x,wp.y,wp.z); wg.rotation.order='YXZ';
@@ -2045,7 +2046,7 @@ function buildDogeCar(rig, color){
 function buildFleetCar(rig, raw, yaw){   // whole-car GLB (no separate wheels) — normalized + glossy
   const chassis=new THREE.Group();
   const body=raw.clone();
-  rig.bodyColor=null;
+  rig.bodyColor=null; rig.paintMats=null;   // Kenney cars paint via texture-swatch, not material colour
   body.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=false; const src=o.material; if(src){
     if(src.color && rig.bodyColor==null) rig.bodyColor=src.color.getHex();   // body hue -> color-matched upgrade kit
     o.material=carPaint(src); } } });   // glossy clear-coat paint over the GLB's base colour
