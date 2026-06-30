@@ -103,6 +103,11 @@
   .paintSw:hover{ transform:scale(1.14); }
   .paintSw.sel{ border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.55); }
   .paintSw.stock{ background:repeating-linear-gradient(45deg,#4a4d57,#4a4d57 3px,#8a8d97 3px,#8a8d97 6px); }
+  #styleRow{ display:none; flex-wrap:wrap; align-items:center; justify-content:center; gap:5px; margin-top:7px; pointer-events:auto; }
+  .styleSw{ font-size:10px; font-weight:800; letter-spacing:.4px; padding:4px 9px; border-radius:9px; cursor:pointer;
+            background:linear-gradient(160deg,rgba(255,255,255,.08),rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.16); color:#d4d2de; transition:.12s; }
+  .styleSw:hover{ border-color:rgba(255,255,255,.34); }
+  .styleSw.sel{ background:linear-gradient(95deg,#ff5a2c,#ffb13b); color:#1a0f08; border-color:transparent; box-shadow:0 3px 12px rgba(255,90,40,.4); }
   .kit{ pointer-events:auto; display:flex; align-items:center; gap:7px; padding:7px 12px; border-radius:12px; cursor:pointer;
         background:linear-gradient(160deg,rgba(255,255,255,.09),rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.13); font-size:11px; font-weight:800; letter-spacing:.5px; transition:.12s;
         box-shadow:0 3px 10px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.1); }
@@ -158,13 +163,13 @@
   #settings{ margin-top:4px; padding:10px 14px; border-radius:16px; background:rgba(12,7,20,.5);
              -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,.08); box-shadow:0 8px 30px rgba(0,0,0,.35); }
   #togRow{ display:flex; gap:9px; justify-content:center; }
-  .tog{ pointer-events:auto; padding:8px 15px; border-radius:14px; border:1.5px solid rgba(255,255,255,.16);
+  .tog{ pointer-events:auto; padding:8px 15px; border-radius:10px; border:1.5px solid rgba(255,255,255,.16);
         background:rgba(255,255,255,.06); font-size:min(3vw,12px); font-weight:800; letter-spacing:.5px; cursor:pointer; transition:.14s; }
   .tog.on{ border-color:#7cc0ff; background:rgba(70,150,255,.3); box-shadow:0 4px 16px rgba(70,150,255,.35); color:#fff; }
   #sndRow,#musRow{ display:flex; gap:9px; align-items:center; justify-content:center; margin-top:8px; flex-wrap:wrap; }
   #volSlider,#musSlider{ pointer-events:auto; width:min(28vw,120px); accent-color:#ff8a3c; cursor:pointer; }
   #musSlider{ accent-color:#7cc0ff; }
-  .cta{ margin-top:6px; font-size:min(6.5vw,30px); font-weight:900; letter-spacing:1px; padding:14px 56px; border-radius:44px;
+  .cta{ margin-top:6px; font-size:min(6.5vw,30px); font-weight:900; letter-spacing:1px; padding:14px 56px; border-radius:16px;
         background:linear-gradient(95deg,#ff4d2c,#ff8a3c 45%,#ffd23b); color:#1a0f08; cursor:pointer;
         box-shadow:0 12px 34px rgba(255,90,40,.5), inset 0 2px 0 rgba(255,255,255,.35); animation:bob 1.6s ease-in-out infinite; }
   @keyframes bob{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-6px) } }
@@ -188,10 +193,10 @@
   .champRow .pts{ color:#ffd23b; font-size:17px; }
   .champRow.you{ background:linear-gradient(90deg,rgba(255,120,60,.3),rgba(120,40,20,.35)); border-color:rgba(255,210,90,.5); }
   #resBtnRow{ display:flex; gap:12px; margin-top:14px; }
-  .cta2{ pointer-events:auto; font-size:min(4.2vw,18px); font-weight:800; padding:11px 24px; border-radius:30px;
+  .cta2{ pointer-events:auto; font-size:min(4.2vw,18px); font-weight:800; padding:11px 24px; border-radius:13px;
          background:rgba(255,255,255,.12); color:#fff; border:2px solid rgba(255,255,255,.25); box-shadow:none; animation:none; cursor:pointer; }
   #coinBadge{ position:fixed; top:14px; right:16px; z-index:30; pointer-events:none; font-size:min(4.4vw,19px); font-weight:900; letter-spacing:.5px;
-              color:#ffd23b; background:linear-gradient(150deg,rgba(40,24,12,.82),rgba(20,12,28,.72)); padding:7px 16px; border-radius:20px;
+              color:#ffd23b; background:linear-gradient(150deg,rgba(40,24,12,.82),rgba(20,12,28,.72)); padding:7px 16px; border-radius:12px;
               border:1px solid rgba(255,210,59,.5); box-shadow:0 4px 16px rgba(0,0,0,.4); }
 
   /* ---------- premium tabbed menu shell ---------- */
@@ -202,9 +207,9 @@
           background:linear-gradient(180deg,#fff 6%,#ffd76b 52%,#ff7330); -webkit-background-clip:text; background-clip:text; color:transparent;
           filter:drop-shadow(0 2px 0 rgba(150,40,10,.5)) drop-shadow(0 6px 18px rgba(0,0,0,.5)); }
   .brand span{ margin-left:.32em; }
-  #tabStrip{ display:flex; gap:6px; padding:4px; margin:4px auto 0; border-radius:16px; background:rgba(10,6,18,.5);
+  #tabStrip{ display:flex; gap:6px; padding:4px; margin:4px auto 0; border-radius:12px; background:rgba(10,6,18,.5);
              -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); border:var(--hairline); }
-  .tab{ pointer-events:auto; padding:8px 16px; border-radius:12px; font-size:min(3.4vw,13px); font-weight:800; letter-spacing:.6px;
+  .tab{ pointer-events:auto; padding:8px 16px; border-radius:9px; font-size:min(3.4vw,13px); font-weight:800; letter-spacing:.6px;
         color:#c8c6d4; cursor:pointer; transition:.15s; white-space:nowrap; }
   .tab.on{ background:linear-gradient(95deg,#ff5a2c,#ffb13b); color:#1a0f08; box-shadow:0 4px 16px rgba(255,90,40,.4); }
   #mPanels{ flex:1 1 auto; width:100%; min-height:0; position:relative; }
@@ -420,6 +425,7 @@
           <div id="carStatus"></div>
           <div id="kitRow"></div>
           <div id="paintRow"></div>
+          <div id="styleRow"></div>
         </div>
         <div class="carArrow" id="carNext">▶</div>
       </div>
@@ -600,14 +606,16 @@ const CARS=[ {name:'DRIFTER', kind:'doge',                spd:70,  grip:88, pric
              {name:'KART',        kind:'glb', raw:'kart',     yaw:0, spd:80, grip:95, price:1500},
              {name:'HAULER',      kind:'glb', raw:'truck',    yaw:0, spd:93, grip:60, price:1900},
              {name:'FIRETRUCK',   kind:'glb', raw:'firetruck',yaw:0, spd:86, grip:66, price:2200},
-             {name:'AMBULANCE',   kind:'glb', raw:'ambulance',yaw:0, spd:90, grip:64, price:2400} ];
+             {name:'AMBULANCE',   kind:'glb', raw:'ambulance',yaw:0, spd:90, grip:64, price:2400},
+             {name:'PATRIOT',     kind:'glb', raw:'kartB',    yaw:0, spd:82, grip:93, price:2600} ];
 // Latin-American nationality theme: each car flies a country flag + the flag's colour resonates on the car (Puerto Rico first)
 const COUNTRIES=[
   {name:'PUERTO RICO', key:'pr', col:0xed1c24}, {name:'DOMINICAN REP.', key:'do', col:0x002d62}, {name:'BRAZIL', key:'br', col:0x009b3a},
   {name:'MEXICO', key:'mx', col:0x006847}, {name:'ARGENTINA', key:'ar', col:0x75aadb}, {name:'COLOMBIA', key:'co', col:0xfcd116},
   {name:'VENEZUELA', key:'ve', col:0x00247d}, {name:'PERU', key:'pe', col:0xd91023}, {name:'CHILE', key:'cl', col:0x0039a6},
   {name:'CUBA', key:'cu', col:0x002a8f}, {name:'ECUADOR', key:'ec', col:0xffdd00}, {name:'URUGUAY', key:'uy', col:0x0038a8},
-  {name:'BOLIVIA', key:'bo', col:0x007a3d}, {name:'PANAMA', key:'pa', col:0x005293}, {name:'GUATEMALA', key:'gt', col:0x4997d0}, {name:'PARAGUAY', key:'py', col:0xd52b1e} ];
+  {name:'BOLIVIA', key:'bo', col:0x007a3d}, {name:'PANAMA', key:'pa', col:0x005293}, {name:'GUATEMALA', key:'gt', col:0x4997d0}, {name:'PARAGUAY', key:'py', col:0xd52b1e},
+  {name:'USA', key:'us', col:0x002868} ];
 const PAINTS=[ {name:'Stock',hex:null}, {name:'Red',hex:0xe0202a}, {name:'Orange',hex:0xf07315}, {name:'Gold',hex:0xf2c021},
   {name:'Lime',hex:0x7ac81e}, {name:'Green',hex:0x18a558}, {name:'Teal',hex:0x12a39a}, {name:'Cyan',hex:0x18b5d6},
   {name:'Blue',hex:0x1e6cff}, {name:'Navy',hex:0x23306e}, {name:'Purple',hex:0x7b3ff2}, {name:'Pink',hex:0xe84f9c},
@@ -636,6 +644,9 @@ function flagCanvas(key){
     case 'pa': x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.fillStyle='#d21034'; x.fillRect(W/2,0,W/2,H/2); x.fillStyle='#005293'; x.fillRect(0,H/2,W/2,H/2); star(W*0.25,H*0.25,8,'#005293'); star(W*0.75,H*0.75,8,'#d21034'); break;
     case 'gt': vs(['#4997d0','#fff','#4997d0']); x.fillStyle='#4d7c2a'; x.beginPath(); x.arc(W/2,H/2,H*0.12,0,7); x.fill(); break;
     case 'py': hs(['#d52b1e','#fff','#0038a8']); break;
+    case 'us': { const sh=H/7; for(let i=0;i<7;i++){ x.fillStyle=(i%2)?'#fff':'#b22234'; x.fillRect(0,i*sh,W,sh+1); }
+      x.fillStyle='#3c3b6e'; x.fillRect(0,0,W*0.44,H*0.54);
+      x.fillStyle='#fff'; for(let r=0;r<3;r++)for(let c=0;c<4;c++){ x.beginPath(); x.arc(W*0.06+c*W*0.105, H*0.11+r*H*0.17, H*0.026,0,7); x.fill(); } } break;
     default: x.fillStyle='#888'; x.fillRect(0,0,W,H);
   }
   x.strokeStyle='rgba(0,0,0,.35)'; x.lineWidth=2; x.strokeRect(1,1,W-2,H-2); return c;
@@ -654,6 +665,21 @@ function applyLivery(rig, carIdx){
 let _cmCanvas=null, _bodyCol={}, _paintTex={};
 let paintJobs={}; try{ paintJobs=JSON.parse(localStorage.getItem('sd_paint')||'{}'); }catch(e){ paintJobs={}; }
 function savePaint(){ try{ localStorage.setItem('sd_paint', JSON.stringify(paintJobs)); }catch(e){} }
+// ---- paint FINISHES (styles, not just colours): set the body material's roughness/metalness/clearcoat ----
+const PAINT_STYLES=[ {key:'gloss',name:'Gloss',rough:0.34,metal:0.42,cc:0.9}, {key:'matte',name:'Matte',rough:0.92,metal:0.05,cc:0.0},
+  {key:'metal',name:'Metallic',rough:0.22,metal:0.92,cc:0.5}, {key:'chrome',name:'Chrome',rough:0.04,metal:1.0,cc:1.0}, {key:'pearl',name:'Pearl',rough:0.15,metal:0.55,cc:1.0} ];
+let paintStyles={}; try{ paintStyles=JSON.parse(localStorage.getItem('sd_pstyle')||'{}'); }catch(e){ paintStyles={}; }
+function savePaintStyle(){ try{ localStorage.setItem('sd_pstyle', JSON.stringify(paintStyles)); }catch(e){} }
+// the paintable body mesh(es): prefer a 'body'-named mesh, else any textured non-wheel/glass/driver mesh (karts name theirs '<model>_1')
+function carBodyMeshes(chassis){ const named=[], fallback=[];
+  chassis.traverse(o=>{ if(!o.isMesh) return; const n=o.name||'';
+    if(/wheel|tyre|tire|character|driver|glass|window|light|lamp/i.test(n)) return;
+    if(/body/i.test(n)) named.push(o); else if(o.material && o.material.map) fallback.push(o); });
+  return named.length ? named : fallback; }
+function finishCar(rig, styleKey){ const s=PAINT_STYLES.find(p=>p.key===styleKey); if(!s||!rig.chassis) return;
+  const apply=m=>{ if(!m) return; m.roughness=s.rough; m.metalness=s.metal; if('clearcoat' in m){ m.clearcoat=s.cc; m.clearcoatRoughness=s.rough*0.5; } m.needsUpdate=true; };
+  if(rig.paintMats && rig.paintMats.length){ rig.paintMats.forEach(apply); return; }   // doge
+  carBodyMeshes(rig.chassis).forEach(o=>apply(o.material)); }
 function colormapCanvas(tex){ if(_cmCanvas) return _cmCanvas; if(!tex||!tex.image) return null;
   const c=document.createElement('canvas'); c.width=tex.image.width; c.height=tex.image.height; c.getContext('2d').drawImage(tex.image,0,0); _cmCanvas=c; return c; }
 function bodyDomColor(body, cm, key){ if(_bodyCol[key]) return _bodyCol[key];
@@ -671,7 +697,7 @@ function bodyDomColor(body, cm, key){ if(_bodyCol[key]) return _bodyCol[key];
   _bodyCol[key]=best?best.split(',').map(Number):null; return _bodyCol[key]; }
 function paintCar(rig, hex, modelKey){ if(hex==null||!rig.chassis) return;
   if(rig.paintMats && rig.paintMats.length){ const col=new THREE.Color(hex); rig.paintMats.forEach(m=>m.color.copy(col)); return; }   // procedural (doge) car: recolour body materials directly, glass untouched
-  let body=null; rig.chassis.traverse(o=>{ if(o.isMesh&&/body/i.test(o.name||'')) body=o; });
+  const body=carBodyMeshes(rig.chassis)[0];
   if(!body||!body.material.map||!body.material.map.image) return;
   const cm=colormapCanvas(body.material.map); if(!cm) return; const from=bodyDomColor(body, cm, modelKey); if(!from) return;
   const to=[(hex>>16)&255,(hex>>8)&255,hex&255], ck=modelKey+':'+hex; let tex=_paintTex[ck];
@@ -709,8 +735,16 @@ function renderShop(){                                   // menu car panel: name
     st.textContent=(afford?'UNLOCK · ':'🔒 ')+c.price+' 🪙';
     st.onclick=(e)=>{ if(e) e.stopPropagation(); if(coins>=CARS[i].price){ coins-=CARS[i].price; saveCoins(); renderCoins(); ownedCars[i]=true; saveOwned(); renderShop(); } };
     btn.classList.add('locked'); btn.innerHTML='🔒 UNLOCK TO RACE'; }
-  renderKits(); renderPaints();
+  renderKits(); renderPaints(); renderStyles();
 }
+function renderStyles(){                                  // garage paint-FINISH picker (gloss/matte/metallic/chrome/pearl)
+  const host=document.getElementById('styleRow'); if(!host) return; const i=selectedCar;
+  if(!isOwned(i)){ host.style.display='none'; host.innerHTML=''; return; }
+  host.style.display='flex'; const cur=paintStyles[i]||'';
+  host.innerHTML='<span class="paintLbl">FINISH</span><i class="styleSw'+(cur===''?' sel':'')+'" data-s="">Stock</i>'+
+    PAINT_STYLES.map(s=>'<i class="styleSw'+(cur===s.key?' sel':'')+'" data-s="'+s.key+'">'+s.name+'</i>').join('');
+  host.querySelectorAll('.styleSw').forEach(sw=>{ sw.onclick=(e)=>{ if(e) e.stopPropagation(); const s=sw.getAttribute('data-s');
+    if(s==='') delete paintStyles[i]; else paintStyles[i]=s; savePaintStyle(); upgradeCars(); renderStyles(); }; }); }
 function renderPaints(){                                  // garage paint-job picker (owned Kenney cars; recolours body, keeps glass)
   const host=document.getElementById('paintRow'); if(!host) return; const i=selectedCar;
   if(!isOwned(i)){ host.style.display='none'; host.innerHTML=''; return; }
@@ -2046,7 +2080,8 @@ function loadCarModels(){
    ['hatch','models/cc0/kenney/hatchback-sports.glb'],['suv','models/cc0/kenney/suv-luxury.glb'],['pickup','models/cc0/kenney/van.glb'],
    ['racer','models/cc0/kenney/race.glb'],['racecar','models/cc0/kenney/race-future.glb'],['muscle','models/cc0/kenney/suv.glb'],
    ['roadster','models/cc0/kenney/sedan.glb'],['police','models/cc0/kenney/police.glb'],['taxi','models/cc0/kenney/taxi.glb'],
-   ['kart','models/cc0/kenney/kart-oobi.glb'],['truck','models/cc0/kenney/truck.glb'],['firetruck','models/cc0/kenney/firetruck.glb'],['ambulance','models/cc0/kenney/ambulance.glb']].forEach(([k,f])=>{   // CC0 Kenney Car Kit (modular, named wheels)
+   ['kart','models/cc0/kenney/kart-oobi.glb'],['truck','models/cc0/kenney/truck.glb'],['firetruck','models/cc0/kenney/firetruck.glb'],['ambulance','models/cc0/kenney/ambulance.glb'],
+   ['kartB','models/cc0/kenney/kart-oodi.glb']].forEach(([k,f])=>{   // CC0 Kenney Car Kit (modular, named wheels)
     try{ L.load(f, g=>{ fleetRaw[k]=g.scene; if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
   });
   // sculpted upgrade parts (Blender, CC0) -> real spoiler/diffuser/lip/skirt instead of procedural boxes
@@ -2074,6 +2109,7 @@ function upgradeCars(){
     applyLivery(rig, liveryIdx);                              // country flag decals + flag-colour theme on every car
     attachUpgrades(rig, liveryIdx, c.isPlayer?null:{eng:2,tire:2,nos:1});   // visible kits on ALL cars (AI get a moderate kit)
     paintCar(rig, paintJobs[liveryIdx], CARS[liveryIdx].raw||'doge');        // custom paint job (recolours the body, keeps glass)
+    if(paintStyles[liveryIdx]) finishCar(rig, paintStyles[liveryIdx]);       // custom finish/style (matte/metallic/chrome/pearl)
     if(rig.flames) rig.flames.forEach(f=>rig.group.add(f));   // re-attach exhaust flames (group was wiped above)
     if(isTouch && !c.isPlayer) rig.group.traverse(o=>{ if(o.isMesh) o.castShadow=false; });
   });
