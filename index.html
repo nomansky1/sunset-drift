@@ -567,7 +567,7 @@ let sampleElev = [], roadAmp = 0;        // road centerline elevation profile (3
 let sampleHW = [];                        // per-sample road half-width — narrows at corners too tight for the full width (kills the inner-edge fold glitch)
 function computeRoadElev(){
   sampleElev = new Array(SAMPLES).fill(0);
-  roadAmp = (terrainAmp<=0 || !terrainNoise) ? 0 : clamp(terrainAmp*0.9, 22, 52);   // more pronounced climbs on nature themes
+  roadAmp = (terrainAmp<=0 || !terrainNoise) ? 0 : clamp(terrainAmp*0.78, 18, 42);   // scenic climbs, but tamer (less bounce)
   if(beachSea!=null) roadAmp = Math.min(roadAmp, 15);                                // seaside: gentle undulation only — must never dive under the ocean
   if(!roadAmp) return;
   const raw=samplePts.map(p=> terrainNoise(p.x*0.006+50, p.y*0.006+50));   // base noise along the centerline
@@ -575,8 +575,8 @@ function computeRoadElev(){
   for(let i=0;i<SAMPLES;i++){ const u=i/SAMPLES;
     let s=0; for(let k=-R;k<=R;k++) s+=raw[((i+k)%SAMPLES+SAMPLES)%SAMPLES];
     const noiseH=(s/(2*R+1))-0.42;
-    const hills=Math.sin(u*Math.PI*2*3)*0.5 + Math.sin(u*Math.PI*2*5+1.3)*0.2;        // 3 deliberate rolling crests + undulation (continuous around the loop)
-    sampleElev[i]=(noiseH*1.05 + hills*0.5)*roadAmp; }
+    const hills=Math.sin(u*Math.PI*2*2)*0.38 + Math.sin(u*Math.PI*2*3+1.3)*0.12;      // gentle LONG rolls (natural ride, not choppy bumps)
+    sampleElev[i]=(noiseH*1.0 + hills*0.32)*roadAmp; }
   const tmp=sampleElev.slice(), R2=7;                                                  // wrap-smooth -> gentle, drivable grades (not jagged)
   for(let i=0;i<SAMPLES;i++){ let s=0; for(let k=-R2;k<=R2;k++) s+=tmp[((i+k)%SAMPLES+SAMPLES)%SAMPLES]; sampleElev[i]=s/(2*R2+1); }
   if(beachSea!=null){ let mn=Infinity; for(let i=0;i<SAMPLES;i++) if(sampleElev[i]<mn) mn=sampleElev[i];   // lift the whole ribbon so its lowest point clears the sea (+4)
@@ -869,8 +869,8 @@ function saveGhostIfBest(){ if(ghostRec.length<5) return;    // keep only the FA
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
 const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert)
 let difficulty='normal';
-const DIFF={ easy:{base:1.00, cap:1.16, aggro:0.92}, normal:{base:1.06, cap:1.26, aggro:1.0}, hard:{base:1.15, cap:1.40, aggro:1.20} };  // faster + more aggressive AI
-let aiCap=1.18, aiAggro=1.0;   // band ceiling + corner/boost aggression, set from difficulty
+const DIFF={ easy:{base:1.05, cap:1.16, aggro:0.96, acc:1.0}, normal:{base:1.17, cap:1.40, aggro:1.10, acc:1.18}, hard:{base:1.26, cap:1.52, aggro:1.24, acc:1.38} };  // acc = AI corner-exit accel/boost+grip power (NOT top speed -> no runaway); easy stays beatable, hard matches a maxed+upgraded player
+let aiCap=1.18, aiAggro=1.0, aiAccel=1.0;   // band ceiling + corner/boost aggression + accel power, set from difficulty
 const CHAMP_PTS=[10,6,4,2,1,1];                                        // points by finishing rank
 let bestLap = null;
 let lapTimes = [], rivalIdx = -1;                                     // per-lap splits + the designated rival car index
@@ -2033,24 +2033,26 @@ function captureEnv(){
 }
 function buildLights(sunDir){
   if(nightMode){
-    scene.add(new THREE.HemisphereLight(0x3a4a7a, 0x05060c, 0.45));
-    scene.add(new THREE.AmbientLight(0x2a3358, 0.22));
+    scene.add(new THREE.HemisphereLight(0x3a4a7a, 0x05060c, 0.5));
+    scene.add(new THREE.AmbientLight(0x2a3358, 0.16));
   } else {
-    scene.add(new THREE.HemisphereLight(0xffd9a0, 0x3a2f1c, 0.85));
-    scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+    scene.add(new THREE.HemisphereLight(0xcdd9ec, 0x4a3a28, 1.12));   // cool sky + warm ground bounce = directional fill that PRESERVES form (flat ambient = plastic)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.07));                 // just a sliver of flat lift (was 0.18 — it was washing out the form shadows)
   }
-  const sun=new THREE.DirectionalLight(nightMode?0x9fb4ff:0xfff0d8, nightMode?0.55:2.55);
+  const sun=new THREE.DirectionalLight(nightMode?0x9fb4ff:0xffd6a0, nightMode?0.55:2.5);   // golden-hour key (~3800K)
   // raise the SHADOW-casting light to a healthy elevation (grounded shadows) while the visual sun disc stays low/dramatic
   const ld=new THREE.Vector3(sunDir.x, Math.max(sunDir.y, 0.62), sunDir.z).normalize();
   sun.position.set(trackCentroid.x+ld.x*160, ld.y*160, trackCentroid.y+ld.z*160);
   sun.target.position.set(trackCentroid.x,0,trackCentroid.y); scene.add(sun.target);
   sun.castShadow=true;
-  const s=72;                              // tight shadow box that follows the car each frame (crisp shadows)
+  const s=46;                              // TIGHT shadow box following the car (was 72) -> ~2.4x denser texels = crisp shadows, same cost
   sun.shadow.camera.left=-s; sun.shadow.camera.right=s; sun.shadow.camera.top=s; sun.shadow.camera.bottom=-s;
-  sun.shadow.camera.near=10; sun.shadow.camera.far=360;
+  sun.shadow.camera.near=1; sun.shadow.camera.far=240; sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.mapSize.set(isTouch?1024:2048, isTouch?2048:2048);
-  sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.45; sun.shadow.radius=isTouch?2:3.5;   // soft PCF edges
+  sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03; sun.shadow.radius=isTouch?3:4;   // normalBias 0.45->0.03: shadows REATTACH to the wheels/cars (kills peter-panning)
   scene.add(sun); sunLight=sun;
+  if(!nightMode){ const fill=new THREE.DirectionalLight(0x9db4d6, 0.22);                 // cool shadowless fill OPPOSITE the sun -> shaded sides read as real daylight, not dead-flat
+    fill.position.set(trackCentroid.x-ld.x*120, 60, trackCentroid.y-ld.z*120); fill.castShadow=false; scene.add(fill); }
 }
 
 /* =========================================================================
@@ -2413,9 +2415,9 @@ function placeGrid(){
     c.vel.set(0,0); c.boost=CONFIG.boostMax; c.trackIdx=idx; c.halfPassed=false;
     c.lap=0; c.lapStart=0; c.finished=false; c.boosting=false; c.wasBoost=false; c.drifting=false; c._lastRank=0; c._padBoost=0;
     c._nmT=-9; c._rivAhead=undefined;                      // reset near-miss timestamp + rival side so they work on race 2+
-    if(!c.isPlayer){ const D=DIFF[difficulty]||DIFF.normal; aiCap=D.cap; aiAggro=D.aggro||1;
+    if(!c.isPlayer){ const D=DIFF[difficulty]||DIFF.normal; aiCap=D.cap; aiAggro=D.aggro||1; aiAccel=D.acc||1;
       c.aiBase=(0.965+((i*0.0185)%0.07)) * D.base * (TRACK_DIFF[currentTrack]||1) * (champ.active?(1+0.02*champ.round):1);   // skill + difficulty + per-track + championship ramp
-      c.aiMiss=(0.05+((i*7)%4)*0.02) * (champ.active?(1-0.12*champ.round):1); }              // catch-up handled by the dynamic rubber-band cap (only speeds AI when it's behind you)
+      c.aiMiss=(0.03+((i*7)%4)*0.013) * (champ.active?(1-0.12*champ.round):1); }              // fewer corner errors; catch-up handled by the dynamic rubber-band cap
     syncCarMesh(c);
   }
   resetPickups(); runScore=0; combo=1; comboTimer=0;   // fresh coins + style score each grid
@@ -2435,7 +2437,15 @@ function carShadowAssets(){
 function syncCarMesh(c){
   c.visY = roadElevExact(c.pos.x, c.pos.y, c.trackIdx);   // exact interpolated road height -> sits on the road at any speed
   c.rig.group.position.set(c.pos.x, 0.06+c.visY+(c.air||0), c.pos.y);   // +air = launched off a crest
-  c.rig.group.rotation.y=c.heading;
+  // PITCH the car to follow the road grade so it never clips its nose/tail into a hill (and reads natural on slopes)
+  let pitch=0;
+  if(sampleElev.length && !((c.air||0)>0)){
+    const i1=(c.trackIdx+3)%SAMPLES, i0=((c.trackIdx-3)%SAMPLES+SAMPLES)%SAMPLES;
+    const run=Math.hypot(samplePts[i1].x-samplePts[i0].x, samplePts[i1].y-samplePts[i0].y)||1;
+    pitch=clamp(Math.atan2(roadElevAt(c.trackIdx+3)-roadElevAt(c.trackIdx-3), run), -0.32, 0.32);
+  }
+  c._pitch=(c._pitch||0)+(pitch-(c._pitch||0))*0.25;       // light smoothing -> no jitter at slope transitions
+  c.rig.group.rotation.order='YXZ'; c.rig.group.rotation.y=c.heading; c.rig.group.rotation.x=-c._pitch;
   // soft contact shadow under the car (grounds it; AI cars cast no real shadow on mobile)
   carShadowAssets();
   if(!c.shadowMesh){ c.shadowMesh=new THREE.Mesh(_carShadowGeo,_carShadowMat); scene.add(c.shadowMesh); }
@@ -2457,7 +2467,8 @@ function updateCar(c, inp, dt){
 
   // engine (ENGINE kit: standstill launch grunt that fades with speed)
   if(inp.throttle && !inp.brake){ const launch=1+0.5*(c.engLvl||0)*clamp(1-speed/18,0,1);
-    c.vel.addScaledVector(_f, CONFIG.engineAccel*(c.spdMul||1)*launch*dt); }
+    const accMul = c.isPlayer ? (c.spdMul||1) : aiAccel;                      // AI gets difficulty accel power (corner-exit punch) instead of upgrades
+    c.vel.addScaledVector(_f, CONFIG.engineAccel*accMul*launch*dt); }
   if(inp.brake){ const bm=inp.brakeMul||1;
     if(fwdSpeed>0.6) c.vel.addScaledVector(_f, -CONFIG.brakeAccel*bm*dt);
     else c.vel.addScaledVector(_f, -CONFIG.reverseAccel*dt);
@@ -2468,7 +2479,7 @@ function updateCar(c, inp, dt){
   c.boosting=false;
   if(c._padBoost>0) c._padBoost-=dt;                       // boost-pad forced-boost window
   if((inp.boost || c._padBoost>0) && c.boost>2 && fwdSpeed>-1){
-    c.vel.addScaledVector(_f, CONFIG.boostForce*(c.nosForce||1)*dt); c.boost-=CONFIG.boostDrain*(c.nosDrain||1)*dt; c.boosting=true;   // NITROUS: stronger + slower drain
+    c.vel.addScaledVector(_f, CONFIG.boostForce*(c.isPlayer?(c.nosForce||1):aiAccel)*dt); c.boost-=CONFIG.boostDrain*(c.nosDrain||1)*dt; c.boosting=true;   // NITROUS: stronger + slower drain (AI uses its difficulty power)
   } else {
     c.boost += (c.drifting?CONFIG.boostDriftRefill*(c.nosFill||1):CONFIG.boostRefill)*dt;   // NITROUS: drift fills the bar faster
   }
@@ -2476,14 +2487,15 @@ function updateCar(c, inp, dt){
   if(c.boosting && !c.wasBoost && c.isPlayer){ audio && audio.boost();
     if((c.nosMax||1)>1 && raceTime-(c._nosCue||-9)>1.5){ c._nosCue=raceTime; popup('🔥 NOS','#7ce0ff'); } } c.wasBoost=c.boosting;
 
-  // speed clamp
-  const maxSpd=(c.boosting?CONFIG.boostTopSpeed:CONFIG.topSpeed)*(c.maxScale||1)*(c.spdMul||1);
+  // speed clamp ( AI boosting uses a tamer scale so a chasing AI matches — not laps — a boosting player )
+  let _ms=c.maxScale||1; if(!c.isPlayer && c.boosting) _ms=Math.min(_ms, 1.36);
+  const maxSpd=(c.boosting?CONFIG.boostTopSpeed:CONFIG.topSpeed)*_ms*(c.spdMul||1);
   const sp=c.vel.length(); if(sp>maxSpd) c.vel.multiplyScalar(maxSpd/sp);
 
   // ----- JUMPS: cresting a hill at speed launches the car into the air (skill air-time; reuses the rolling hills, all cars) -----
   const _drop = sampleElev.length ? ((sampleElev[c.trackIdx]||0) - (sampleElev[(c.trackIdx+7)%SAMPLES]||0)) : 0;   // >0 = steep downhill crest ahead
-  if((c.air||0)<=0 && (c._airV||0)<=0 && fwdSpeed>32 && _drop>4 && raceTime-(c._landT||-9)>0.45){
-    c._airV = clamp(_drop*1.8 + (fwdSpeed-30)*0.12, 4, 15); c.air=0.02; c._peak=0;               // big launch off a steep crest (rare, satisfying)
+  if((c.air||0)<=0 && (c._airV||0)<=0 && fwdSpeed>42 && _drop>8 && raceTime-(c._landT||-9)>1.1){
+    c._airV = clamp(_drop*1.1 + (fwdSpeed-40)*0.06, 3, 8); c.air=0.02; c._peak=0;                // only a genuine steep crest launches (rare, gentle hop)
     if(c.isPlayer) camShake=Math.min(camShake+0.22,1);
   }
   if((c.air||0)>0 || (c._airV||0)>0){
@@ -2506,7 +2518,8 @@ function updateCar(c, inp, dt){
   _f.set(Math.sin(c.heading), Math.cos(c.heading));
   const fd=c.vel.dot(_f);
   _l.copy(c.vel).addScaledVector(_f, -fd);          // lateral component
-  const grip=(c.drifting?CONFIG.gripDrift*(1+0.18*tire):CONFIG.gripNormal)*(c.gripMul||1);   // TIRES: snappier drift exit
+  const gripMul = c.isPlayer ? (c.gripMul||1) : (1+(aiAccel-1)*0.6);   // AI grip scales with difficulty so it actually holds the racing line (not just straight-line speed)
+  const grip=(c.drifting?CONFIG.gripDrift*(1+0.18*tire):CONFIG.gripNormal)*gripMul;   // TIRES: snappier drift exit
   _l.multiplyScalar(Math.exp(-grip*dt));            // frame-rate independent
   c.vel.copy(_f).multiplyScalar(fd).add(_l);
 
@@ -2637,11 +2650,11 @@ function aiInput(c){
   // brake toward a corner-appropriate speed (sharper corner -> slower) instead of a single threshold
   const targetSpd=clamp((64 - curve*70)*aiAggro, 17, 74);                                     // aggression: carry MORE corner speed (brake later) on hard
   let brake = speed > targetSpd+3;
-  if(curve>0.5 && !c._inCorner){ c._inCorner=true; c._missThis = !window.__auto && Math.random()<(c.aiMiss||0); }   // decide the miss ONCE per corner (not every frame)
+  if(curve>0.5 && !c._inCorner){ c._inCorner=true; c._missThis = !window.__auto && Math.random()<((c.aiMiss||0)*(c.isRival?0.25:1)); }   // decide the miss ONCE per corner; the RIVAL barely errs
   else if(curve<0.28) c._inCorner=false;
   const brakeMul = (brake && c._missThis) ? 0.5 : (curve>0.7 ? 1.6 : 1);   // miss = brake soft (wide line); very sharp = brake hard so it actually makes the turn
-  const boostHard = (c.isRival ? 22 : 30) / aiAggro;                                          // aggression: boost MORE often (lower threshold) on hard
-  return { throttle:!brake, brake, brakeMul, steer, drift: curve>0.62 && speed>30, boost: !brake && curve<0.1 && c.boost>boostHard };
+  const boostHard = (c.isRival ? 14 : 20) / aiAggro;                                          // aggression: deploy NITROUS readily (lower threshold) on hard
+  return { throttle:!brake, brake, brakeMul, steer, drift: curve>0.62 && speed>30, boost: !brake && c.boost>boostHard };   // boost whenever not braking for a corner (the !brake gate already keeps it out of hard turns) — matches how a player nitros
 }
 
 /* =========================================================================
@@ -2913,8 +2926,9 @@ function update(dt){
     updateCar(player, inp, dt);
     for(let i=1;i<cars.length;i++){ const c=cars[i];
       const gap=(prog(player)-prog(c))/SAMPLES;   // + = player ahead of this AI
-      const band = gap>0 ? clamp(gap*2.4, 0, 0.30) : clamp(gap*0.4, -0.03, 0);   // catch up HARDER when trailing the player; barely ease when ahead (don't let the player run away)
-      c.maxScale=clamp((c.aiBase||1)+band, 0.93, c.isRival?(aiCap+0.04):aiCap);
+      const band = gap>0 ? clamp(gap*3.6, 0, 0.6) : clamp(gap*0.5, -0.04, 0);   // chase HARD when trailing; hold pace (don't fall away) when ahead
+      c.maxScale=clamp((c.aiBase||1)+band, 0.95, c.isRival?(aiCap+0.06):aiCap);
+      if(aiAccel>1.01 && gap>-0.05) c.boost=Math.max(c.boost, CONFIG.boostMax*0.5);   // normal/hard only: keep AI nitrous fed when near/behind so they sustain boost like a maxed player (easy AI doesn't get this)
       updateCar(c, aiInput(c), dt); }
     resolveCollisions();
     recordGhost(dt); updateGhost();                                  // sample this run + replay your best
@@ -2962,7 +2976,7 @@ function resolveCollisions(){
 
 // one final pass: radial speed blur (sharp centre, streaking edges) + grade + vignette + sRGB
 const CINEMATIC_SHADER = {
-  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uSpeed:{value:0.0}, uContrast:{value:1.24}, uSat:{value:1.5}, uTone:{value:0.9}, uVignette:{value:0.55} },
+  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uSpeed:{value:0.0}, uContrast:{value:1.14}, uSat:{value:1.3}, uTone:{value:0.9}, uVignette:{value:0.55} },
   vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader:[
     'precision highp float; varying vec2 vUv; uniform sampler2D tDiffuse;',
@@ -3089,7 +3103,7 @@ function buildWorld(idx){
     renderer.toneMappingExposure = 1.0;
     if(bloomPass){ bloomPass.strength = isTouch?0.65:0.8; bloomPass.threshold = 0.7; }   // neon + lights pop (not car paint)
   } else {
-    renderer.toneMappingExposure = bright ? 0.82 : warm ? 0.84 : 1.18;
+    renderer.toneMappingExposure = bright ? 0.74 : warm ? 0.80 : 0.98;   // lowered to offset the stronger hemi+fill (form without blow-out); dusk 1.18->0.98 filmic
     if(bloomPass){
       bloomPass.strength  = bright ? 0.2 : warm ? 0.26 : (isTouch?0.4:0.5);
       bloomPass.threshold = bright ? 0.99 : warm ? 0.96 : 0.9;
