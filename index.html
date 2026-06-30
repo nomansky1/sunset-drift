@@ -656,10 +656,24 @@ const _flagURL={}; function flagURL(key){ if(!_flagURL[key]) _flagURL[key]=flagC
 // flag decals on the car (doors + hood) + the flag's primary colour drives the upgrade kit
 function applyLivery(rig, carIdx){
   const co=COUNTRIES[carIdx%COUNTRIES.length]; if(!co) return; rig.bodyColor=co.col;
-  const d=rig.dims||{W:2,H:1.5,Lz:4.6}, mat=new THREE.MeshBasicMaterial({map:flagTex(co.key), side:THREE.DoubleSide, toneMapped:false, polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2});
-  const g=rig.group, fw=Math.min(0.8, d.Lz*0.1), fh=fw*0.66;
-  for(const sx of [-1,1]){ const fl=new THREE.Mesh(new THREE.PlaneGeometry(fw,fh), mat); fl.position.set(sx*d.W*0.46, d.H*0.42, d.Lz*0.03); fl.rotation.y=sx>0?Math.PI/2:-Math.PI/2; g.add(fl); }   // small flag hugging each door
-  const hf=new THREE.Mesh(new THREE.PlaneGeometry(fw*0.85,fh*0.85), mat); hf.position.set(0, d.H*0.6, d.Lz*0.3); hf.rotation.x=-Math.PI*0.46; g.add(hf);   // small hood flag
+  if(!rig.chassis) return; rig.group.updateMatrixWorld(true);
+  // RAYCAST the actual body surface so the flag sits ON the panel (conforms like a decal), never floating or buried
+  const targets=[]; rig.chassis.traverse(o=>{ if(o.isMesh && !/wheel|tyre|tire|glass|window/i.test(o.name||'')) targets.push(o); });
+  if(!targets.length) return;
+  const d=rig.dims||{W:2,H:1.5,Lz:4.6};
+  const mat=new THREE.MeshBasicMaterial({map:flagTex(co.key), side:THREE.DoubleSide, toneMapped:false, transparent:true, polygonOffset:true, polygonOffsetFactor:-5, polygonOffsetUnits:-5});
+  const ray=new THREE.Raycaster(), Z=new THREE.Vector3(0,0,1), fw=clamp(d.Lz*0.2, 0.6, 1.25), fh=fw*0.6;
+  for(const sx of [-1,1]){
+    const start=new THREE.Vector3(sx*d.W*1.7, d.H*0.44, 0).applyMatrix4(rig.group.matrixWorld);   // out beside the door, mid-height
+    const aim=new THREE.Vector3(0, d.H*0.44, 0).applyMatrix4(rig.group.matrixWorld);
+    ray.set(start, aim.clone().sub(start).normalize());
+    const hits=ray.intersectObjects(targets, true); if(!hits.length) continue; const h=hits[0];
+    let n=h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld) : start.clone().sub(h.point).normalize();
+    if(n.dot(start.clone().sub(h.point))<0) n.negate();                                            // ensure it faces outward (the camera side)
+    const fl=new THREE.Mesh(new THREE.PlaneGeometry(fw,fh), mat); scene.add(fl);
+    fl.position.copy(h.point).addScaledVector(n,0.02); fl.quaternion.setFromUnitVectors(Z,n); fl.updateMatrixWorld();
+    rig.group.attach(fl);                                                                          // reparent to the car, keeping the on-surface transform
+  }
 }
 // ---- PAINT JOB: recolour the body's colour-swatch inside the shared Kenney colormap, leaving glass/lights/wheels intact ----
 let _cmCanvas=null, _bodyCol={}, _paintTex={};
@@ -2160,7 +2174,10 @@ function buildFleetCar(rig, raw, yaw){   // whole-car GLB (no separate wheels) â
   rig.dims={W:sz.x*sc, H:sz.y*sc, Lz:sz.z*sc, yaw:yaw||0};   // true normalized size (centered, +Z fwd) for the upgrade kit
   const scaleG=new THREE.Group(); scaleG.scale.setScalar(sc); scaleG.rotation.y=yaw; scaleG.add(chassis);
   rig.group.add(scaleG);
-  rig.chassis=chassis; rig.wheels=[]; rig.front=[]; rig.spinAcc=0;
+  // collect the GLB's named wheels so they roll (spin) + the fronts steer â€” the Kenney kit has separate wheel nodes
+  const wheels=[], front=[];
+  body.traverse(o=>{ if(o.isMesh && /wheel|tyre|tire/i.test(o.name||'')){ o.rotation.order='YXZ'; wheels.push(o); if(/front/i.test(o.name||'')) front.push(o); } });
+  rig.chassis=chassis; rig.wheels=wheels; rig.front=front; rig.spinAcc=0;
 }
 // rounded (molded) box: a rounded-rect profile extruded + beveled -> no hard square edges
 function rbox(w,h,d,r){
@@ -3073,7 +3090,7 @@ function init(){
 
   scene=new THREE.Scene();
   scene.fog=new THREE.Fog(CONFIG.colors.fog, 120, 760);
-  camera=new THREE.PerspectiveCamera(CONFIG.fovBase, innerWidth/innerHeight, 0.5, 3000);
+  camera=new THREE.PerspectiveCamera(CONFIG.fovBase, innerWidth/innerHeight, 0.15, 3000);   // low near plane so the close/hood cam doesn't clip the road on a crest (was 0.5 -> background showed at the bottom)
   renderer=new THREE.WebGLRenderer({canvas:document.getElementById('game'), antialias:!isTouch});
   renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch?1.5:2));
   renderer.setSize(innerWidth, innerHeight);
