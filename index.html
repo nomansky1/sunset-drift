@@ -829,8 +829,8 @@ const MUSIC={
   docks:'https://storage.googleapis.com/oneilbeats-media/beats/1779232334914_El_Bueno__El_Malo___El_Feo-TAGGED.mp3',
   desert:'https://storage.googleapis.com/oneilbeats-media/beats/1779375765913_Tormenta_en_la_Pista-TAGGED.mp3',
   forest:'https://storage.googleapis.com/oneilbeats-media/beats/1778911511289_My_Candlelight-TAGGED.mp3',
-  beach:'https://storage.googleapis.com/oneilbeats-media/beats/1779375765913_Tormenta_en_la_Pista-TAGGED.mp3',   // former desert track
-  snow:'https://storage.googleapis.com/oneilbeats-media/beats/1778803850820_Piel_Canela-TAGGED.mp3',            // ALPINE
+  beach:'https://storage.googleapis.com/oneilbeats-media/beats/1776564966479_Perreo_en_la_Pista-TAGGED.mp3',     // SUNSET BEACH — sunny D-major "on the track"
+  snow:'https://storage.googleapis.com/oneilbeats-media/beats/1776708333434_Luna-TAGGED.mp3',                    // ALPINE — atmospheric "moon"
 };
 let musicVolume=0.12, musicMuted=false, bgMusic=null, musicTheme=null;   // background music sits well under the engine/SFX
 function applyMusicVol(){ if(bgMusic) bgMusic.volume = musicMuted?0:musicVolume; }
@@ -927,7 +927,10 @@ class AudioEngine {
       L.g.gain.setTargetAtTime(w, t, 0.09);
       try{ L.src.playbackRate.setTargetAtTime(pitch, t, 0.09); }catch(e){}
     }
-    this.engGain.gain.setTargetAtTime(0.42 + (throttle?0.32:0.07) + this._rpm*0.14, t, 0.1);   // a touch quieter/less buzzy
+    if(this._gear!=null && g!==this._gear) this._shift=1;                       // gear changed -> brief clutch-cut (punchier shift feel)
+    this._gear=g; const shiftDuck=1-(this._shift||0)*0.55;
+    this.engGain.gain.setTargetAtTime((0.42 + (throttle?0.34:0.07) + this._rpm*0.2)*shiftDuck, t, 0.05);   // more presence at high revs + shift duck
+    this._shift=(this._shift||0)*0.8;
     if(drift) this._startSkid(); else this._stopSkid();
   }
   _startSkid(){ if(this.skidOn||!this.buffers.skid) return; this.skidOn=true; const t=this.ctx.currentTime;
