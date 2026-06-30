@@ -1504,20 +1504,33 @@ function buildStreetFurniture(rng){
   const lamp=new THREE.InstancedMesh(new THREE.SphereGeometry(0.45,8,6), new THREE.MeshStandardMaterial({color:0xfff2c0, emissive:0xffe08a, emissiveIntensity:2.0}), poles.length);
   poles.forEach((q,k)=>{ _m.makeTranslation(q.x,0,q.z); pole.setMatrixAt(k,_m); _m.makeTranslation(q.x,7,q.z); lamp.setMatrixAt(k,_m); });
   pole.instanceMatrix.needsUpdate=lamp.instanceMatrix.needsUpdate=true; pole.castShadow=!isTouch; scene.add(pole); scene.add(lamp);
-  // a few street trees
-  const trunkMat=new THREE.MeshStandardMaterial({color:0x5a3f28, roughness:1});
-  const leafMat=new THREE.MeshStandardMaterial({color:0x2f6b34, flatShading:true, roughness:1});
-  for(let k=0;k<14;k++){ const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>0.5?1:-1, off=CONFIG.roadHalfWidth+3+rng()*1.2;
-    const g=new THREE.Group();
-    const tr=new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.32,3,6), trunkMat); tr.position.y=1.5; g.add(tr);
-    const cn=new THREE.Mesh(new THREE.IcosahedronGeometry(1.8,0), leafMat); cn.position.y=4; g.add(cn);
-    g.position.set(p.x+n.x*off*side,0,p.y+n.y*off*side); g.traverse(o=>o.castShadow=!isTouch); scene.add(g); }
+  // ---- denser greenery: street trees lining the road + park clusters + bushes (all instanced for perf) ----
+  const _t=new THREE.Matrix4(), _tp=new THREE.Vector3(), _tq=new THREE.Quaternion(), _ts=new THREE.Vector3();
+  const treePos=[];
+  for(let i=0;i<SAMPLES;i+=18){ const p=samplePts[i], n=sampleNorm[i], side=((i/18)%2)?1:-1, off=CONFIG.roadHalfWidth+3.5+rng()*2.5;
+    const x=p.x+n.x*off*side, z=p.y+n.y*off*side; if(distToTrackApprox(x,z)>CONFIG.roadHalfWidth+2) treePos.push({x,z,s:0.9+rng()*0.5}); }   // line the street
+  for(let c=0;c<4;c++){ const a=rng()*6.283, rad=trackRadius+30+rng()*120, cx=trackCentroid.x+Math.cos(a)*rad, cz=trackCentroid.y+Math.sin(a)*rad;
+    if(distToTrackApprox(cx,cz)<30) continue;
+    for(let t=0;t<7;t++){ const x=cx+(rng()-0.5)*24, z=cz+(rng()-0.5)*24; treePos.push({x,z,s:1.0+rng()*0.6}); } }   // a small park: a cluster of trees
+  if(treePos.length){
+    const trunkGeo=new THREE.CylinderGeometry(0.25,0.34,3,6); trunkGeo.translate(0,1.5,0);
+    const trunk=new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({color:0x5a3f28,roughness:1}), treePos.length);
+    const leaf=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.9,0), new THREE.MeshStandardMaterial({color:0x2f6b34,flatShading:true,roughness:1}), treePos.length);
+    treePos.forEach((t,k)=>{ const y=terrainHeight(t.x,t.z); _t.compose(_tp.set(t.x,y,t.z),_tq,_ts.set(t.s,t.s,t.s)); trunk.setMatrixAt(k,_t);
+      _t.compose(_tp.set(t.x,y+4*t.s,t.z),_tq,_ts.set(t.s,t.s,t.s)); leaf.setMatrixAt(k,_t); });
+    trunk.instanceMatrix.needsUpdate=leaf.instanceMatrix.needsUpdate=true; trunk.castShadow=leaf.castShadow=!isTouch; scene.add(trunk); scene.add(leaf); }
+  const bushPos=[];
+  for(let i=0;i<SAMPLES;i+=11){ if(rng()>0.55) continue; const p=samplePts[i], n=sampleNorm[i], side=rng()>0.5?1:-1, off=CONFIG.roadHalfWidth+2.5+rng()*4;
+    const x=p.x+n.x*off*side, z=p.y+n.y*off*side; if(distToTrackApprox(x,z)>CONFIG.roadHalfWidth+1.5) bushPos.push({x,z}); }
+  if(bushPos.length){ const bush=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.7,0), new THREE.MeshStandardMaterial({color:0x3a7a3e,flatShading:true,roughness:1}), bushPos.length);
+    bushPos.forEach((b,k)=>{ _t.compose(_tp.set(b.x,terrainHeight(b.x,b.z)+0.5,b.z),_tq,_ts.set(1,0.8,1)); bush.setMatrixAt(k,_t); });
+    bush.instanceMatrix.needsUpdate=true; bush.castShadow=!isTouch; scene.add(bush); }
 }
 function scatterProps(){ const rng=mulberry32(7777);
   const th=currentTheme?currentTheme.theme:'city';
   if(th==='coast') buildCoast(rng);
   else if(th==='beach') buildCoast(rng);                 // palms line the beach road
-  else if(th==='docks') buildDocks(rng);
+  else if(th==='docks'){ buildDocks(rng); buildStreetFurniture(rng); }
   else if(th==='desert') buildDesert(rng);
   else if(th==='forest' || th==='snow') buildForest(rng);   // snow reuses the pine scatter (white ground)
   else { buildCity(rng); buildStreetFurniture(rng); }
@@ -1748,7 +1761,7 @@ function buildDocks(rng){
 // DESERT: instanced red-rock mesas + cacti
 function buildDesert(rng){
   const _m=new THREE.Matrix4(), q=new THREE.Quaternion(), pv=new THREE.Vector3(), sv=new THREE.Vector3(), ax=new THREE.Vector3(0,1,0), rocks=[];
-  for(let k=0;k<32;k++){ const a=rng()*6.283, rad=trackRadius+25+rng()*270, x=trackCentroid.x+Math.cos(a)*rad, z=trackCentroid.y+Math.sin(a)*rad;
+  for(let k=0;k<44;k++){ const a=rng()*6.283, rad=trackRadius+25+rng()*270, x=trackCentroid.x+Math.cos(a)*rad, z=trackCentroid.y+Math.sin(a)*rad;
     if(distToTrackApprox(x,z)<24) continue; rocks.push({x,z,h:12+rng()*34,r:7+rng()*13,ry:rng()*6}); }
   if(propsReady && propModels.desertrock){                   // real CC0 red-rock formations
     instProp(propModels.desertrock, rocks.map(b=> propMat(b.x,b.z, b.r*1.5, b.ry, -0.5, true)));   // tilt to slope
@@ -1759,7 +1772,7 @@ function buildDesert(rng){
     rmesh.instanceMatrix.needsUpdate=true; rmesh.castShadow=!isTouch; scene.add(rmesh);
   }
   const cacti=[];                                            // cacti only on flat low sand, not mesa slopes
-  for(let k=0;k<60 && cacti.length<18;k++){ const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>.5?1:-1, off=CONFIG.roadHalfWidth+4+rng()*16;
+  for(let k=0;k<90 && cacti.length<30;k++){ const i=Math.floor(rng()*SAMPLES), p=samplePts[i], n=sampleNorm[i], side=rng()>.5?1:-1, off=CONFIG.roadHalfWidth+4+rng()*16;
     const x=p.x+n.x*off*side, z=p.y+n.y*off*side; if(distToTrackApprox(x,z)<CONFIG.roadHalfWidth+2) continue;
     if(heightFrac(x,z)>0.25 || terrainSlope(x,z)>0.33) continue;
     cacti.push({x,z,h:3+rng()*3,ry:rng()*6.283}); }
@@ -1776,7 +1789,7 @@ function buildForest(rng){
   const _m=new THREE.Matrix4(), q=new THREE.Quaternion(), pv=new THREE.Vector3(), sv=new THREE.Vector3(), trees=[];
   // clustered pines on the lower, gentler slopes; thin + shrink toward the treeline; bare rock/snow above
   const TREELINE=0.58;
-  for(let c=0;c<16;c++){
+  for(let c=0;c<22;c++){
     let cx=0,cz=0,ok=false,tries=0;
     while(!ok && tries++<30){ const a=rng()*6.283, rad=CONFIG.roadHalfWidth+16+rng()*280; cx=trackCentroid.x+Math.cos(a)*rad; cz=trackCentroid.y+Math.sin(a)*rad;
       ok = distToTrackApprox(cx,cz)>CONFIG.roadHalfWidth+5 && heightFrac(cx,cz)<TREELINE-0.12 && terrainSlope(cx,cz)<0.5; }
