@@ -766,7 +766,7 @@ const TRACKS=[
 ];
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99, menuT = 0;
-let champ = { active:false, order:[0,3,5,2,4,1], round:0, points:[] };   // championship: track sequence + points per car
+let champ = { active:false, order:[0,3,5,2,6,4,1], round:0, points:[] };   // championship: 7-track sequence (incl. DUST DEVIL desert) + points per car
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
 const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert)
 let difficulty='normal';
@@ -2480,7 +2480,15 @@ function updateCar(c, inp, dt){
   // ----- arcade: pickups + drift style score (player, racing) -----
   if(c.isPlayer && state==='race'){
     arcadePickups(c, dt);
-    if(c.drifting && slip>1.6 && spd>8){ runScore += slip*dt*7*combo; comboTimer=2.6; }
+    // ----- DRIFT CHAIN: holding a drift scores + escalates the combo multiplier; clean exit pays out -----
+    if(c.drifting && slip>1.6 && spd>8){
+      runScore += slip*dt*8*combo; comboTimer=2.6;
+      c._driftT=(c._driftT||0)+dt;
+      if(c._driftT>=1.2){ c._driftT=0; combo=Math.min(combo+1,12); popup('🌀 DRIFT x'+combo,'#c98aff'); }   // each ~1.2s held bumps the chain
+    } else if((c._driftT||0)>0){
+      if(c._driftT>0.6) addScore(45,'🌀 DRIFT','#c98aff');   // reward a clean drift on exit
+      c._driftT=0;
+    }
   }
 }
 
