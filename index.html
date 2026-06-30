@@ -443,6 +443,7 @@
         <div id="togRow">
           <div class="tog" id="togDiff">⚙ NORMAL</div>
           <div class="tog on" id="togAuto">🚗 AUTO</div>
+          <div class="tog on" id="togGhost">👻 GHOST</div>
           <div class="tog" id="togNight">🌙 NIGHT</div>
           <div class="tog" id="togRain">🌧 RAIN</div>
           <div class="tog" id="togLow">⚡ LITE</div>
@@ -835,6 +836,36 @@ function renderDaily(){ const c=document.getElementById('dailyCard'); if(!c) ret
   const tt=document.getElementById('dcTrack'); if(tt) tt.textContent='· '+t.name;
   const ds=document.getElementById('dcStreak'); if(ds) ds.innerHTML=(dailyState.streak>0?('🔥 '+dailyState.streak):'')+(done&&dailyState.best?(' <span style="color:#5fe08a">'+fmt(dailyState.best)+'</span>'):'');
   const dp=document.getElementById('dcPlay'); if(dp) dp.innerHTML=(done?'REPLAY':'PLAY')+'&nbsp;▸'; }
+// ---- LOCAL GHOST: record your run, race a translucent replay of your BEST run per track (server-less; the PolyTrack/Ghost-Pro retention glue) ----
+let ghostOn=true;                                            // settings toggle (sd_ghost_on)
+let ghostRec=[], ghostRecAcc=0;                              // current-run sampling buffer (~10fps)
+let ghostData=null, ghostMesh=null, ghostActive=false, _ghostCur=0;
+function loadGhost(){ _ghostCur=0; ghostData=null;           // load this track's stored best run
+  if(!ghostOn) return;
+  try{ const g=JSON.parse(localStorage.getItem('sd_ghost_'+currentTrack)||'null'); if(g && g.s && g.s.length>=2) ghostData=g; }catch(e){} }
+function buildGhostMesh(){                                   // a translucent clone of the player's current car
+  if(ghostMesh){ scene.remove(ghostMesh); ghostMesh=null; }
+  if(!ghostData || !ghostOn || !player.rig || !player.rig.group) return;
+  const g=player.rig.group.clone(true);
+  const mat=new THREE.MeshBasicMaterial({color:0x74d2ff, transparent:true, opacity:0.26, depthWrite:false, toneMapped:false});
+  g.traverse(o=>{ if(o.isMesh){ o.material=mat; o.castShadow=o.receiveShadow=false; o.renderOrder=2; } });
+  g.visible=false; scene.add(g); ghostMesh=g; _ghostCur=0; }
+function angLerp(a,b,t){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2; return a+d*t; }
+function updateGhost(){                                      // place the ghost at its recorded position for the current raceTime
+  if(!ghostActive || !ghostMesh || !ghostData){ if(ghostMesh) ghostMesh.visible=false; return; }
+  const s=ghostData.s, t=raceTime;
+  while(_ghostCur<s.length-1 && s[_ghostCur+1][0]<=t) _ghostCur++;
+  if(_ghostCur>=s.length-1){ ghostMesh.visible=false; return; }   // ghost already crossed the line -> gone
+  const a=s[_ghostCur], b=s[_ghostCur+1], span=b[0]-a[0], k=span>0?clamp((t-a[0])/span,0,1):0;
+  ghostMesh.position.set(a[1]+(b[1]-a[1])*k, 0.06+a[4]+(b[4]-a[4])*k, a[2]+(b[2]-a[2])*k);
+  ghostMesh.rotation.y=angLerp(a[3],b[3],k); ghostMesh.visible=ghostOn; }
+function recordGhost(dt){ ghostRecAcc+=dt; if(ghostRecAcc<0.1) return; ghostRecAcc=0;   // sample ~10fps
+  ghostRec.push([+raceTime.toFixed(2), +player.pos.x.toFixed(1), +player.pos.y.toFixed(1), +player.heading.toFixed(3), +((player.visY||0)+(player.air||0)).toFixed(1)]); }
+function saveGhostIfBest(){ if(ghostRec.length<5) return;    // keep only the FASTEST run as the ghost
+  const key='sd_ghost_'+currentTrack; let prev=null;
+  try{ prev=JSON.parse(localStorage.getItem(key)||'null'); }catch(e){}
+  if(prev && prev.time<=raceTime) return;
+  try{ localStorage.setItem(key, JSON.stringify({time:+raceTime.toFixed(2), car:selectedCar, s:ghostRec})); }catch(e){} }
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
 const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert)
 let difficulty='normal';
@@ -2768,6 +2799,7 @@ function startGame(){
   player._nosCue=player._gripCue=-9;                                        // upgrade-popup throttles
   bestLap=null; raceTime=0; countdown=3.0; goTimer=0; lastFlash=-1; lastBeepN=99; state='countdown';
   lapTimes=[]; player._perfectArmed=false; player._autoLaunch=Math.random()<0.6; assignRival();   // per-race state
+  ghostRec=[]; ghostRecAcc=0; loadGhost(); buildGhostMesh(); ghostActive=!!ghostData;   // record this run; replay the stored best
   document.body.classList.remove('inmenu');
   elMenu.classList.add('hidden'); elResults.classList.add('hidden');
   document.getElementById('pauseBtn').classList.add('show'); document.getElementById('camBtn').classList.add('show'); document.getElementById('pauseMenu').classList.add('hidden');
@@ -2783,6 +2815,7 @@ function pauseGame(){ if(state!=='race') return; state='paused'; document.getEle
 function resumeGame(){ if(state!=='paused') return; document.getElementById('pauseMenu').classList.add('hidden'); state='race'; }
 function showMenu(){                                       // back to the garage/menu (shop)
   state='menu'; menuT=0; champ.active=false; hidePauseUI(); document.body.classList.add('inmenu');
+  if(ghostMesh) ghostMesh.visible=false; ghostActive=false;   // no ghost in the garage
   elResults.classList.add('hidden'); document.getElementById('champ').classList.add('hidden'); elMenu.classList.remove('hidden');
   const sb=document.getElementById('scoreBox'); if(sb) sb.style.display='none';   // clear race HUD leftovers
   document.getElementById('rivalTag').classList.add('hidden');
@@ -2814,6 +2847,8 @@ function showStandings(){
 function finishRace(){
   player.finished=true; state='finished'; hidePauseUI();
   const r=rankOf(player), won=r===1;
+  let prevGhostT=null; try{ const g=JSON.parse(localStorage.getItem('sd_ghost_'+currentTrack)||'null'); if(g) prevGhostT=g.time; }catch(e){}   // GHOST: time to beat (before we overwrite)
+  if(ghostMesh) ghostMesh.visible=false; ghostActive=false; saveGhostIfBest();
   const wasDaily=dailyActive; dailyActive=false;                                  // DAILY: update the streak on completion
   if(wasDaily){ const dn=dayNum();
     if(dailyState.day!==dn){ dailyState.streak=(dailyState.day===dn-1)?dailyState.streak+1:1; dailyState.day=dn; dailyState.best=raceTime; }
@@ -2834,6 +2869,9 @@ function finishRace(){
   document.getElementById('resPos').innerHTML = medal+ordinal(r);
   document.getElementById('resStats').innerHTML =
     lapSplitsHTML() + 'Total <b>'+fmt(raceTime)+'</b> &nbsp;·&nbsp; Best <b>'+fmt(bestLap)+'</b>'
+    + (prevGhostT!=null ? '<br><span style="font-size:.82em">👻 '+(raceTime<prevGhostT
+        ? '<span style="color:#5fe08a">−'+(prevGhostT-raceTime).toFixed(1)+'s vs your ghost</span>'
+        : '<span style="opacity:.8">+'+(raceTime-prevGhostT).toFixed(1)+'s vs your ghost</span>')+'</span>' : '')
     + (coinGrab>0?'<br><span style="font-size:.82em;opacity:.85">🪙 '+coinGrab+' collected on track</span>':'');
   renderStars(stars);
   animateCount(document.getElementById('resReward'), reward, '+', ' 🪙'+(runScore>0?'   ·   '+Math.round(runScore).toLocaleString()+' pts':''));
@@ -2879,6 +2917,7 @@ function update(dt){
       c.maxScale=clamp((c.aiBase||1)+band, 0.93, c.isRival?(aiCap+0.04):aiCap);
       updateCar(c, aiInput(c), dt); }
     resolveCollisions();
+    recordGhost(dt); updateGhost();                                  // sample this run + replay your best
     if(comboTimer>0){ comboTimer-=dt; if(comboTimer<=0) combo=1; }   // combo decays when you stop earning
     updateArcadeVisuals(dt);
     updateCamera(dt); updateHUD();
@@ -3171,6 +3210,11 @@ function init(){
   const togAuto=document.getElementById('togAuto');
   togAuto.addEventListener('click', e=>{ e.stopPropagation(); autoDrive=!autoDrive; togAuto.classList.toggle('on',autoDrive);
     document.body.classList.toggle('autodrive', autoDrive); try{ localStorage.setItem('sd_auto', autoDrive?1:0); }catch(_){} });
+  const togGhost=document.getElementById('togGhost');
+  try{ const gg=localStorage.getItem('sd_ghost_on'); ghostOn = gg===null?true:gg==='1'; }catch(_){ ghostOn=true; }
+  togGhost.classList.toggle('on',ghostOn);
+  togGhost.addEventListener('click', e=>{ e.stopPropagation(); ghostOn=!ghostOn; togGhost.classList.toggle('on',ghostOn);
+    try{ localStorage.setItem('sd_ghost_on', ghostOn?1:0); }catch(_){} if(!ghostOn && ghostMesh) ghostMesh.visible=false; });
   document.getElementById('camBtn').addEventListener('click', e=>{ e.stopPropagation(); cycleCam(); });
   const togNight=document.getElementById('togNight'), togRain=document.getElementById('togRain');
   togNight.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return; nightMode=!nightMode; togNight.classList.toggle('on',nightMode); selectTrack(currentTrack); });
