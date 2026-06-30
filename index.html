@@ -137,6 +137,13 @@
   .sub::before,.sub::after{ content:''; display:inline-block; width:26px; height:2px; vertical-align:middle; margin:0 12px; background:linear-gradient(90deg,transparent,#ff8a3c); }
   .sub::after{ background:linear-gradient(90deg,#ff8a3c,transparent); }
   #trackPick{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; justify-content:center; max-width:840px; }
+  #dailyCard{ display:flex; align-items:center; justify-content:space-between; gap:8px; pointer-events:auto; cursor:pointer; width:min(92%,440px); margin:9px auto 0; padding:8px 12px; border-radius:13px;
+              background:linear-gradient(100deg, rgba(255,90,40,.34), rgba(255,170,60,.16) 62%, rgba(20,12,28,.5)); border:1px solid rgba(255,170,80,.45);
+              box-shadow:0 5px 16px rgba(255,90,40,.3), inset 0 1px 0 rgba(255,255,255,.14); font-size:min(3.4vw,13px); font-weight:800; transition:.14s; }
+  #dailyCard:hover{ transform:translateY(-2px); }
+  #dailyCard .dcL{ display:flex; align-items:center; gap:6px; color:#ffe2b0; letter-spacing:.4px; } #dailyCard .dcL b{ color:#fff; } #dailyCard #dcTrack{ opacity:.85; }
+  #dailyCard .dcR{ display:flex; align-items:center; gap:10px; } #dailyCard #dcStreak{ color:#ffd23b; font-weight:900; white-space:nowrap; }
+  #dailyCard .dcPlay{ padding:5px 13px; border-radius:9px; background:linear-gradient(95deg,#ff5a2c,#ffb13b); color:#1a0f08; font-weight:900; letter-spacing:.5px; box-shadow:0 3px 10px rgba(255,90,40,.4); }
   .trackBtn{ pointer-events:auto; padding:9px 11px 8px; border-radius:16px; border:1px solid rgba(255,255,255,.09);
              background:linear-gradient(168deg, rgba(var(--accent-rgb,150,110,190),.20), rgba(11,8,17,.85) 62%); -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px);
              display:flex; flex-direction:column; align-items:center; min-width:98px; cursor:pointer; position:relative; overflow:hidden;
@@ -403,6 +410,7 @@
   <div id="mPanels">
     <div class="mPanel on" id="panel-race">
       <div class="sub" id="trackSub">DOWNTOWN · GOLDEN HOUR</div>
+      <div id="dailyCard"><div class="dcL">🔥 <b>DAILY</b> <span id="dcTrack">—</span></div><div class="dcR"><span id="dcStreak"></span><span class="dcPlay" id="dcPlay">PLAY&nbsp;▸</span></div></div>
       <div id="trackPick">
         <div class="trackBtn sel" data-i="0"><div class="ic">🌇</div><b>GOLDEN MILE</b><span>Golden Hour</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
         <div class="trackBtn" data-i="1"><div class="ic">🌅</div><b>OCEAN DRIVE</b><span>Sunset Coast</span><div class="dots"><i class="on"></i><i></i><i></i></div></div>
@@ -815,6 +823,18 @@ const TRACKS=[
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99, menuT = 0;
 let champ = { active:false, order:[0,3,5,2,6,4,1], round:0, points:[] };   // championship: 7-track sequence (incl. DUST DEVIL desert) + points per car
+// ---- DAILY CHALLENGE: one date-seeded track + a daily streak (pure client; the Wordle-of-racing retention loop) ----
+let dailyActive=false, dailyState={day:0,streak:0,best:0};
+try{ const s=JSON.parse(localStorage.getItem('sd_daily')||'{}'); dailyState={day:s.day|0,streak:s.streak|0,best:s.best||0}; }catch(e){}
+function saveDaily(){ try{ localStorage.setItem('sd_daily', JSON.stringify(dailyState)); }catch(e){} }
+function dayNum(){ return Math.floor(Date.now()/86400000); }                       // integer day (UTC) — same for everyone, changes daily
+function dailyTrackIdx(){ return ((dayNum()%TRACKS.length)+TRACKS.length)%TRACKS.length; }
+function dailyDoneToday(){ return dailyState.day===dayNum(); }
+function startDaily(){ if(!isOwned(selectedCar)){ renderShop(); return; } dailyActive=true; champ.active=false; const ti=dailyTrackIdx(); currentTrack=ti; selectTrack(ti); startGame(); }
+function renderDaily(){ const c=document.getElementById('dailyCard'); if(!c) return; const t=TRACKS[dailyTrackIdx()], done=dailyDoneToday();
+  const tt=document.getElementById('dcTrack'); if(tt) tt.textContent='· '+t.name;
+  const ds=document.getElementById('dcStreak'); if(ds) ds.innerHTML=(dailyState.streak>0?('🔥 '+dailyState.streak):'')+(done&&dailyState.best?(' <span style="color:#5fe08a">'+fmt(dailyState.best)+'</span>'):'');
+  const dp=document.getElementById('dcPlay'); if(dp) dp.innerHTML=(done?'REPLAY':'PLAY')+'&nbsp;▸'; }
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
 const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert)
 let difficulty='normal';
@@ -2766,7 +2786,7 @@ function showMenu(){                                       // back to the garage
   elResults.classList.add('hidden'); document.getElementById('champ').classList.add('hidden'); elMenu.classList.remove('hidden');
   const sb=document.getElementById('scoreBox'); if(sb) sb.style.display='none';   // clear race HUD leftovers
   document.getElementById('rivalTag').classList.add('hidden');
-  placeGrid(); renderCoins(); renderShop(); renderTrackStars();   // reset car to the grid + refresh coins/unlock/stars
+  placeGrid(); renderCoins(); renderShop(); renderTrackStars(); renderDaily();   // reset car to the grid + refresh coins/unlock/stars/daily
 }
 function startChampionship(){
   if(!isOwned(selectedCar)){ renderShop(); return; }
@@ -2794,6 +2814,11 @@ function showStandings(){
 function finishRace(){
   player.finished=true; state='finished'; hidePauseUI();
   const r=rankOf(player), won=r===1;
+  const wasDaily=dailyActive; dailyActive=false;                                  // DAILY: update the streak on completion
+  if(wasDaily){ const dn=dayNum();
+    if(dailyState.day!==dn){ dailyState.streak=(dailyState.day===dn-1)?dailyState.streak+1:1; dailyState.day=dn; dailyState.best=raceTime; }
+    else if(!dailyState.best || raceTime<dailyState.best){ dailyState.best=raceTime; }
+    saveDaily(); }
   const styleCoins=Math.round(runScore/40);              // drift/style pays
   const diffMul = 1 + ((TRACK_DIFF[currentTrack]||1)-1)*5;   // harder tracks pay more
   const reward=Math.round((([240,140,90,50][r-1]||30) + Math.max(0, Math.round((22-(bestLap||raceTime))*8)) + styleCoins) * diffMul);   // place + lap-speed + style, scaled by track difficulty
@@ -2805,6 +2830,7 @@ function finishRace(){
   if(prevBest===undefined || raceTime<prevBest){ trackBest[currentTrack]=raceTime; saveBest(); if(prevBest!==undefined) newRecord=true; }
   const medal = r===1?'🥇 ':r===2?'🥈 ':r===3?'🥉 ':'';
   document.getElementById('resTitle').textContent = newRecord?'⏱ NEW RECORD!' : (won?'🏆 YOU WIN!':(r<=2?'PODIUM!':'FINISH!'));
+  if(wasDaily) document.getElementById('resTitle').innerHTML = '🔥 DAILY · '+dailyState.streak+' DAY'+(dailyState.streak===1?'':'S');   // daily streak headline
   document.getElementById('resPos').innerHTML = medal+ordinal(r);
   document.getElementById('resStats').innerHTML =
     lapSplitsHTML() + 'Total <b>'+fmt(raceTime)+'</b> &nbsp;·&nbsp; Best <b>'+fmt(bestLap)+'</b>'
@@ -3132,6 +3158,7 @@ function init(){
     document.querySelectorAll('#mPanels .mPanel').forEach(p=>p.classList.toggle('on', p.id==='panel-'+id)); }));
   document.getElementById('startBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false; startGame(); });
   document.getElementById('champBtn').addEventListener('click', e=>{ e.stopPropagation(); startChampionship(); });
+  { const dc=document.getElementById('dailyCard'); if(dc) dc.addEventListener('click', e=>{ e.stopPropagation(); startDaily(); }); }
   document.getElementById('champNext').addEventListener('click', e=>{ e.stopPropagation();
     document.getElementById('champ').classList.add('hidden');
     if(champ.active){ currentTrack=champ.order[champ.round]; selectTrack(currentTrack); startGame(); } else showMenu(); });
@@ -3181,7 +3208,7 @@ function init(){
   const swapCar=(d)=>{ selectedCar=(selectedCar+d+CARS.length)%CARS.length; renderShop(); saveSelCar(); upgradeCars(); };
   document.getElementById('carPrev').addEventListener('click', e=>{ e.stopPropagation(); swapCar(-1); });
   document.getElementById('carNext').addEventListener('click', e=>{ e.stopPropagation(); swapCar(1); });
-  renderShop(); renderTrackStars(); paintTrackThumbs();
+  renderShop(); renderTrackStars(); paintTrackThumbs(); renderDaily();
   addEventListener('resize', onResize); onResize(); checkOrient();
   addEventListener('orientationchange', ()=>setTimeout(checkOrient,200));
 
