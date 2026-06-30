@@ -130,21 +130,27 @@
   .sub{ margin-top:12px; font-size:min(3.3vw,14px); opacity:.95; font-weight:800; letter-spacing:4px; color:#ffd9a0; text-transform:uppercase; }
   .sub::before,.sub::after{ content:''; display:inline-block; width:26px; height:2px; vertical-align:middle; margin:0 12px; background:linear-gradient(90deg,transparent,#ff8a3c); }
   .sub::after{ background:linear-gradient(90deg,#ff8a3c,transparent); }
-  #trackPick{ display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; justify-content:center; max-width:760px; }
-  .trackBtn{ pointer-events:auto; padding:8px 11px 7px; border-radius:14px; border:1.5px solid rgba(255,255,255,.12);
-             background:linear-gradient(165deg, rgba(48,28,64,.6), rgba(16,9,26,.6)); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
-             display:flex; flex-direction:column; align-items:center; min-width:90px; transition:.16s ease; cursor:pointer; position:relative; overflow:hidden; }
-  .trackBtn .ic{ font-size:19px; line-height:1; margin-bottom:3px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.5)); }
-  .trackBtn .ic.map{ font-size:0; margin-bottom:5px; } .trackBtn .ic.map svg{ display:block; }
-  .trackBtn b{ font-size:min(3.4vw,13px); letter-spacing:.6px; }
-  .trackBtn span{ font-size:min(2.7vw,10px); opacity:.6; margin-top:2px; }
+  #trackPick{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; justify-content:center; max-width:840px; }
+  .trackBtn{ pointer-events:auto; padding:9px 11px 8px; border-radius:16px; border:1px solid rgba(255,255,255,.09);
+             background:linear-gradient(168deg, rgba(var(--accent-rgb,150,110,190),.20), rgba(11,8,17,.85) 62%); -webkit-backdrop-filter:blur(7px); backdrop-filter:blur(7px);
+             display:flex; flex-direction:column; align-items:center; min-width:98px; cursor:pointer; position:relative; overflow:hidden;
+             transition:transform .18s cubic-bezier(.34,1.25,.5,1), box-shadow .18s, border-color .18s;
+             box-shadow:0 7px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.1); }
+  .trackBtn::before{ content:''; position:absolute; top:0; left:0; right:0; height:3px; background:var(--accent,#ff8a3c); opacity:.5; }
+  .trackBtn .ic{ font-size:19px; line-height:1; margin-bottom:3px; }
+  .trackBtn .ic.map{ font-size:0; margin-bottom:6px; padding:5px 8px; border-radius:11px;
+             background:radial-gradient(120% 90% at 50% 35%, rgba(var(--accent-rgb,150,110,190),.20), rgba(0,0,0,.34)); box-shadow:inset 0 0 0 1px rgba(255,255,255,.07); }
+  .trackBtn .ic.map svg{ display:block; filter:drop-shadow(0 1px 3px rgba(0,0,0,.55)); }
+  .trackBtn b{ font-size:min(3.4vw,13px); letter-spacing:.6px; font-weight:900; text-shadow:0 1px 4px rgba(0,0,0,.6); }
+  .trackBtn span{ font-size:min(2.7vw,10px); opacity:.6; margin-top:2px; letter-spacing:.4px; }
   .trackBtn .dots{ margin-top:7px; display:flex; gap:3px; }
-  .trackBtn .dots i{ width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.22); }
-  .trackBtn .dots i.on{ background:#ff8a3c; }
-  .trackBtn:hover{ transform:translateY(-3px); border-color:rgba(255,255,255,.3); }
-  .trackBtn.sel{ border-color:#ffd23b; background:linear-gradient(165deg, rgba(255,120,60,.4), rgba(120,40,20,.5));
-                 box-shadow:0 8px 26px rgba(255,90,60,.45), inset 0 0 0 1px rgba(255,210,90,.5); transform:translateY(-4px); }
-  .trackBtn.sel::after{ content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,#ff5a3c,#ffd23b); }
+  .trackBtn .dots i{ width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.2); }
+  .trackBtn .dots i.on{ background:var(--accent,#ff8a3c); box-shadow:0 0 5px var(--accent,#ff8a3c); }
+  .trackBtn:hover{ transform:translateY(-3px); }
+  .trackBtn.sel{ border-color:rgba(var(--accent-rgb,255,210,90),.9);
+                 background:linear-gradient(168deg, rgba(var(--accent-rgb,255,120,60),.44), rgba(13,9,17,.82) 72%);
+                 box-shadow:0 13px 34px rgba(var(--accent-rgb,255,90,60),.5), inset 0 0 0 1px rgba(var(--accent-rgb,255,210,90),.4); transform:translateY(-5px) scale(1.05); z-index:2; }
+  .trackBtn.sel::before{ opacity:1; height:4px; box-shadow:0 0 12px var(--accent,#ff8a3c); }
   .carArrow{ pointer-events:auto; width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center;
              font-size:18px; background:rgba(255,255,255,.1); border:1.5px solid rgba(255,255,255,.24); cursor:pointer; transition:.14s; }
   .carArrow:active,.carArrow:hover{ background:rgba(255,150,60,.34); transform:scale(1.08); }
@@ -783,7 +789,7 @@ function renderTrackStars(){ document.querySelectorAll('.trackBtn').forEach(b=>{
   let bt=b.querySelector('.cbest'); if(!bt){ bt=document.createElement('div'); bt.className='cbest'; b.appendChild(bt); }
   bt.textContent = trackBest[i]?('BEST '+fmt(trackBest[i])):''; }); }
 // mini circuit-map thumbnail per track card (drawn from the real ctrl spline) -> premium, shows the actual layout
-const TRACK_ACCENT={ city:'#ff9a4c', coast:'#ffc070', docks:'#5fd0ff', beach:'#7fe0ff', forest:'#8fd86a', snow:'#cfe6ff' };
+const TRACK_ACCENT={ city:'#ff7a3c', coast:'#36c8ff', docks:'#8fb4d6', beach:'#2fd8c0', forest:'#5fd06a', snow:'#a8d8ff', desert:'#e8a83a' };
 function trackThumb(ctrl, accent){
   const v3=ctrl.map(p=>new THREE.Vector3(p[0],0,p[1]));
   const pts=new THREE.CatmullRomCurve3(v3,true,'catmullrom',0.5).getSpacedPoints(72);
@@ -798,7 +804,10 @@ function trackThumb(ctrl, accent){
     +'<circle cx="'+sx+'" cy="'+sy+'" r="3.2" fill="#fff" stroke="'+accent+'" stroke-width="1.3"/></svg>';
 }
 function paintTrackThumbs(){ document.querySelectorAll('.trackBtn').forEach(b=>{ const i=+b.dataset.i, t=TRACKS[i]; if(!t) return;
-  const ic=b.querySelector('.ic'); if(ic && !ic.classList.contains('map')){ ic.classList.add('map'); ic.innerHTML=trackThumb(t.ctrl, TRACK_ACCENT[t.theme]||'#ffb13b'); } }); }
+  const acc=TRACK_ACCENT[t.theme]||'#ffb13b';
+  b.style.setProperty('--accent', acc);
+  b.style.setProperty('--accent-rgb', parseInt(acc.slice(1,3),16)+','+parseInt(acc.slice(3,5),16)+','+parseInt(acc.slice(5,7),16));
+  const ic=b.querySelector('.ic'); if(ic && !ic.classList.contains('map')){ ic.classList.add('map'); ic.innerHTML=trackThumb(t.ctrl, acc); } }); }
 function lapSplitsHTML(){ if(!lapTimes.length) return ''; let fast=1e9,fi=-1; lapTimes.forEach((t,i)=>{ if(t<fast){fast=t;fi=i;} });
   return '<div class="splits">'+lapTimes.map((t,i)=>'<span class="'+(i===fi?'fast':'')+'">L'+(i+1)+' '+fmt(t)+'</span>').join('')+'</div>'; }
 function animateCount(el, target, prefix, suffix){ if(!el) return; clearInterval(el._iv); const steps=28, inc=target/steps; let i=0;
