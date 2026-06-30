@@ -588,13 +588,18 @@ const CARS=[ {name:'DRIFTER', kind:'doge',                spd:70,  grip:88, pric
              {name:'ROADSTER',    kind:'glb', raw:'roadster', yaw:0, spd:88, grip:76, price:850},
              {name:'MUSCLE',      kind:'glb', raw:'muscle',   yaw:0, spd:94, grip:66, price:1100},
              {name:'INTERCEPTOR', kind:'glb', raw:'police',   yaw:0, spd:86, grip:84, price:1300},
-             {name:'GT',          kind:'glb', raw:'racecar',  yaw:0, spd:98, grip:70, price:1600} ];
+             {name:'GT',          kind:'glb', raw:'racecar',  yaw:0, spd:98, grip:70, price:1600},
+             {name:'KART',        kind:'glb', raw:'kart',     yaw:0, spd:80, grip:95, price:1500},
+             {name:'HAULER',      kind:'glb', raw:'truck',    yaw:0, spd:93, grip:60, price:1900},
+             {name:'FIRETRUCK',   kind:'glb', raw:'firetruck',yaw:0, spd:86, grip:66, price:2200},
+             {name:'AMBULANCE',   kind:'glb', raw:'ambulance',yaw:0, spd:90, grip:64, price:2400} ];
 // Latin-American nationality theme: each car flies a country flag + the flag's colour resonates on the car (Puerto Rico first)
 const COUNTRIES=[
   {name:'PUERTO RICO', key:'pr', col:0xed1c24}, {name:'DOMINICAN REP.', key:'do', col:0x002d62}, {name:'BRAZIL', key:'br', col:0x009b3a},
   {name:'MEXICO', key:'mx', col:0x006847}, {name:'ARGENTINA', key:'ar', col:0x75aadb}, {name:'COLOMBIA', key:'co', col:0xfcd116},
   {name:'VENEZUELA', key:'ve', col:0x00247d}, {name:'PERU', key:'pe', col:0xd91023}, {name:'CHILE', key:'cl', col:0x0039a6},
-  {name:'CUBA', key:'cu', col:0x002a8f}, {name:'ECUADOR', key:'ec', col:0xffdd00}, {name:'URUGUAY', key:'uy', col:0x0038a8} ];
+  {name:'CUBA', key:'cu', col:0x002a8f}, {name:'ECUADOR', key:'ec', col:0xffdd00}, {name:'URUGUAY', key:'uy', col:0x0038a8},
+  {name:'BOLIVIA', key:'bo', col:0x007a3d}, {name:'PANAMA', key:'pa', col:0x005293}, {name:'GUATEMALA', key:'gt', col:0x4997d0}, {name:'PARAGUAY', key:'py', col:0xd52b1e} ];
 const PAINTS=[ {name:'Stock',hex:null}, {name:'Red',hex:0xe0202a}, {name:'Orange',hex:0xf07315}, {name:'Gold',hex:0xf2c021},
   {name:'Lime',hex:0x7ac81e}, {name:'Green',hex:0x18a558}, {name:'Teal',hex:0x12a39a}, {name:'Cyan',hex:0x18b5d6},
   {name:'Blue',hex:0x1e6cff}, {name:'Navy',hex:0x23306e}, {name:'Purple',hex:0x7b3ff2}, {name:'Pink',hex:0xe84f9c},
@@ -619,6 +624,10 @@ function flagCanvas(key){
     case 'cu': hs(['#002a8f','#fff','#002a8f','#fff','#002a8f']); tri('#cf142b',W*0.42); star(W*0.14,H/2,9,'#fff'); break;
     case 'ec': x.fillStyle='#ffdd00'; x.fillRect(0,0,W,H/2); x.fillStyle='#034ea2'; x.fillRect(0,H/2,W,H/4); x.fillStyle='#ed1c24'; x.fillRect(0,H*0.75,W,H/4); break;
     case 'uy': for(let i=0;i<9;i++){ x.fillStyle=(i%2)?'#0038a8':'#fff'; x.fillRect(0,i*H/9,W,H/9+1);} x.fillStyle='#fff'; x.fillRect(0,0,W*0.4,H*0.56); x.fillStyle='#fcd116'; x.beginPath(); x.arc(W*0.2,H*0.28,H*0.1,0,7); x.fill(); break;
+    case 'bo': hs(['#d52b1e','#f9e300','#007a3d']); break;
+    case 'pa': x.fillStyle='#fff'; x.fillRect(0,0,W,H); x.fillStyle='#d21034'; x.fillRect(W/2,0,W/2,H/2); x.fillStyle='#005293'; x.fillRect(0,H/2,W/2,H/2); star(W*0.25,H*0.25,8,'#005293'); star(W*0.75,H*0.75,8,'#d21034'); break;
+    case 'gt': vs(['#4997d0','#fff','#4997d0']); x.fillStyle='#4d7c2a'; x.beginPath(); x.arc(W/2,H/2,H*0.12,0,7); x.fill(); break;
+    case 'py': hs(['#d52b1e','#fff','#0038a8']); break;
     default: x.fillStyle='#888'; x.fillRect(0,0,W,H);
   }
   x.strokeStyle='rgba(0,0,0,.35)'; x.lineWidth=2; x.strokeRect(1,1,W-2,H-2); return c;
@@ -2025,7 +2034,8 @@ function loadCarModels(){
   [['sport','models/cc0/kenney/sedan-sports.glb'],['super','models/cc0/kenney/race-future.glb'],
    ['hatch','models/cc0/kenney/hatchback-sports.glb'],['suv','models/cc0/kenney/suv-luxury.glb'],['pickup','models/cc0/kenney/van.glb'],
    ['racer','models/cc0/kenney/race.glb'],['racecar','models/cc0/kenney/race-future.glb'],['muscle','models/cc0/kenney/suv.glb'],
-   ['roadster','models/cc0/kenney/sedan.glb'],['police','models/cc0/kenney/police.glb'],['taxi','models/cc0/kenney/taxi.glb']].forEach(([k,f])=>{   // CC0 Kenney Car Kit (modular, named wheels)
+   ['roadster','models/cc0/kenney/sedan.glb'],['police','models/cc0/kenney/police.glb'],['taxi','models/cc0/kenney/taxi.glb'],
+   ['kart','models/cc0/kenney/kart-oobi.glb'],['truck','models/cc0/kenney/truck.glb'],['firetruck','models/cc0/kenney/firetruck.glb'],['ambulance','models/cc0/kenney/ambulance.glb']].forEach(([k,f])=>{   // CC0 Kenney Car Kit (modular, named wheels)
     try{ L.load(f, g=>{ fleetRaw[k]=g.scene; if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
   });
   // sculpted upgrade parts (Blender, CC0) -> real spoiler/diffuser/lip/skirt instead of procedural boxes
