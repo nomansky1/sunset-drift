@@ -2330,7 +2330,7 @@ function carShadowAssets(){
 }
 function syncCarMesh(c){
   c.visY = roadElevExact(c.pos.x, c.pos.y, c.trackIdx);   // exact interpolated road height -> sits on the road at any speed
-  c.rig.group.position.set(c.pos.x, 0.06+c.visY, c.pos.y);
+  c.rig.group.position.set(c.pos.x, 0.06+c.visY+(c.air||0), c.pos.y);   // +air = launched off a crest
   c.rig.group.rotation.y=c.heading;
   // soft contact shadow under the car (grounds it; AI cars cast no real shadow on mobile)
   carShadowAssets();
@@ -2375,6 +2375,21 @@ function updateCar(c, inp, dt){
   // speed clamp
   const maxSpd=(c.boosting?CONFIG.boostTopSpeed:CONFIG.topSpeed)*(c.maxScale||1)*(c.spdMul||1);
   const sp=c.vel.length(); if(sp>maxSpd) c.vel.multiplyScalar(maxSpd/sp);
+
+  // ----- JUMPS: cresting a hill at speed launches the car into the air (skill air-time; reuses the rolling hills, all cars) -----
+  const _drop = sampleElev.length ? ((sampleElev[c.trackIdx]||0) - (sampleElev[(c.trackIdx+7)%SAMPLES]||0)) : 0;   // >0 = steep downhill crest ahead
+  if((c.air||0)<=0 && (c._airV||0)<=0 && fwdSpeed>32 && _drop>4 && raceTime-(c._landT||-9)>0.45){
+    c._airV = clamp(_drop*1.8 + (fwdSpeed-30)*0.12, 4, 15); c.air=0.02; c._peak=0;               // big launch off a steep crest (rare, satisfying)
+    if(c.isPlayer) camShake=Math.min(camShake+0.22,1);
+  }
+  if((c.air||0)>0 || (c._airV||0)>0){
+    const wasAir=(c.air||0)>0; c._airV=(c._airV||0)-24*dt; c.air=(c.air||0)+c._airV*dt; c._peak=Math.max(c._peak||0, c.air);   // ballistic arc
+    if(c.air<=0){ c.air=0; c._airV=0; c._landT=raceTime;                                          // landed (cooldown before next launch)
+      if(wasAir && c.isPlayer){ camShake=Math.min(camShake+0.3,1); audio&&audio.thud&&audio.thud(0.55);
+        if((c._peak||0)>2 && raceTime-(c._airCue||-9)>1.2){ c._airCue=raceTime; addScore&&addScore(70+Math.round((c._peak||0)*22),'BIG AIR!','#7ce0ff'); } }
+      c._peak=0;
+    }
+  }
 
   // steering (needs speed; reverses when reversing; stronger while drifting)
   let steer=inp.steer*CONFIG.steerRate*dt;
