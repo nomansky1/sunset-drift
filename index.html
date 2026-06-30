@@ -694,7 +694,7 @@ function loadUpg(){ try{ const u=JSON.parse(localStorage.getItem('sd_upg')); car
 function saveUpg(){ try{ localStorage.setItem('sd_upg', JSON.stringify(carUpg)); }catch(e){} }
 function upgOf(i){ return carUpg[i]||{eng:0,tire:0,nos:0}; }
 function carMul(i){ const c=CARS[i]||CARS[0], u=upgOf(i);
-  return { spd:(0.95+(c.spd-70)/30*0.16)*(1+0.035*u.eng), grip:(0.86+(c.grip-60)/30*0.24)*(1+0.06*u.tire) }; }  // stat + upgrades -> physics (starter competitive w/ base AI)
+  return { spd:(0.86+(c.spd-70)/30*0.20)*(1+0.055*u.eng), grip:(0.85+(c.grip-60)/30*0.26)*(1+0.065*u.tire) }; }  // stock car notably SLOWER; each ENGINE level adds real speed (stock starter 0.86 -> maxed 1.00; fast cars scale higher)
 function renderShop(){                                   // menu car panel: name, stats, owned/unlock, RACE state
   const i=selectedCar, c=CARS[i], nm=document.getElementById('carName'); if(!nm) return;
   const st=document.getElementById('carStatus'), btn=document.getElementById('startBtn');
@@ -770,8 +770,8 @@ let champ = { active:false, order:[0,3,5,2,4,1], round:0, points:[] };   // cham
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
 const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert)
 let difficulty='normal';
-const DIFF={ easy:{base:0.95, cap:1.10}, normal:{base:1.0, cap:1.18}, hard:{base:1.07, cap:1.26} };
-let aiCap=1.14;   // band ceiling, set from difficulty in placeGrid
+const DIFF={ easy:{base:1.00, cap:1.16, aggro:0.92}, normal:{base:1.06, cap:1.26, aggro:1.0}, hard:{base:1.15, cap:1.40, aggro:1.20} };  // faster + more aggressive AI
+let aiCap=1.18, aiAggro=1.0;   // band ceiling + corner/boost aggression, set from difficulty
 const CHAMP_PTS=[10,6,4,2,1,1];                                        // points by finishing rank
 let bestLap = null;
 let lapTimes = [], rivalIdx = -1;                                     // per-lap splits + the designated rival car index
@@ -2309,7 +2309,7 @@ function placeGrid(){
     c.vel.set(0,0); c.boost=CONFIG.boostMax; c.trackIdx=idx; c.halfPassed=false;
     c.lap=0; c.lapStart=0; c.finished=false; c.boosting=false; c.wasBoost=false; c.drifting=false; c._lastRank=0; c._padBoost=0;
     c._nmT=-9; c._rivAhead=undefined;                      // reset near-miss timestamp + rival side so they work on race 2+
-    if(!c.isPlayer){ const D=DIFF[difficulty]||DIFF.normal; aiCap=D.cap;
+    if(!c.isPlayer){ const D=DIFF[difficulty]||DIFF.normal; aiCap=D.cap; aiAggro=D.aggro||1;
       c.aiBase=(0.965+((i*0.0185)%0.07)) * D.base * (TRACK_DIFF[currentTrack]||1) * (champ.active?(1+0.02*champ.round):1);   // skill + difficulty + per-track + championship ramp
       c.aiMiss=(0.05+((i*7)%4)*0.02) * (champ.active?(1-0.12*champ.round):1); }              // catch-up handled by the dynamic rubber-band cap (only speeds AI when it's behind you)
     syncCarMesh(c);
@@ -2523,12 +2523,12 @@ function aiInput(c){
   const farI=(c.trackIdx+Math.round(aim*1.6)+8)%SAMPLES, f=samplePts[farI];
   const curve=Math.max(bend, Math.abs(angleDiff(Math.atan2(f.x-tx, f.y-tz), desired)));
   // brake toward a corner-appropriate speed (sharper corner -> slower) instead of a single threshold
-  const targetSpd=clamp(64 - curve*70, 17, 64);
+  const targetSpd=clamp((64 - curve*70)*aiAggro, 17, 74);                                     // aggression: carry MORE corner speed (brake later) on hard
   let brake = speed > targetSpd+3;
   if(curve>0.5 && !c._inCorner){ c._inCorner=true; c._missThis = !window.__auto && Math.random()<(c.aiMiss||0); }   // decide the miss ONCE per corner (not every frame)
   else if(curve<0.28) c._inCorner=false;
   const brakeMul = (brake && c._missThis) ? 0.5 : (curve>0.7 ? 1.6 : 1);   // miss = brake soft (wide line); very sharp = brake hard so it actually makes the turn
-  const boostHard = c.isRival ? 22 : 30;                                                     // the rival pushes boost harder
+  const boostHard = (c.isRival ? 22 : 30) / aiAggro;                                          // aggression: boost MORE often (lower threshold) on hard
   return { throttle:!brake, brake, brakeMul, steer, drift: curve>0.62 && speed>30, boost: !brake && curve<0.1 && c.boost>boostHard };
 }
 
@@ -2546,6 +2546,7 @@ const CAM_VIEWS=[                                              // press C / tap 
   {name:'CHASE', dist:5.5, height:2.9, look:6.0, fov:72},     // default — tight behind the car
   {name:'CLOSE', dist:4.6, height:2.3, look:6.0, fov:76},     // tighter + lower
   {name:'LOW',   dist:3.6, height:1.5, look:11,  fov:84},     // near the road, immersive bumper-ish
+  {name:'HOOD',  dist:-1.8, height:1.2, look:14, fov:84},     // FRONT POV — camera on the nose, first-person forward
   {name:'FAR',   dist:10.5, height:5.0, look:8,  fov:66},     // wide overview (still pulled in a bit)
 ];
 let camView=0;
@@ -2787,7 +2788,7 @@ function update(dt){
     updateCar(player, inp, dt);
     for(let i=1;i<cars.length;i++){ const c=cars[i];
       const gap=(prog(player)-prog(c))/SAMPLES;   // + = player ahead of this AI
-      const band = gap>0 ? clamp(gap*1.6, 0, 0.2) : clamp(gap*0.5, -0.05, 0);   // catch up HARD when trailing the player; ease gently when ahead
+      const band = gap>0 ? clamp(gap*2.4, 0, 0.30) : clamp(gap*0.4, -0.03, 0);   // catch up HARDER when trailing the player; barely ease when ahead (don't let the player run away)
       c.maxScale=clamp((c.aiBase||1)+band, 0.93, c.isRival?(aiCap+0.04):aiCap);
       updateCar(c, aiInput(c), dt); }
     resolveCollisions();
@@ -3075,7 +3076,7 @@ function init(){
     if(champ.active){ currentTrack=champ.order[champ.round]; selectTrack(currentTrack); startGame(); } else showMenu(); });
   document.querySelectorAll('.trackBtn').forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); if(state==='menu') selectTrack(+b.dataset.i); }));
   const togDiff=document.getElementById('togDiff'), DIFF_ORDER=['easy','normal','hard'];
-  const applyDiff=()=>{ togDiff.textContent='⚙ '+difficulty.toUpperCase(); togDiff.classList.toggle('on', difficulty!=='normal'); aiCap=(DIFF[difficulty]||DIFF.normal).cap; };
+  const applyDiff=()=>{ togDiff.textContent='⚙ '+difficulty.toUpperCase(); togDiff.classList.toggle('on', difficulty!=='normal'); const D=DIFF[difficulty]||DIFF.normal; aiCap=D.cap; aiAggro=D.aggro||1; };
   try{ const d=localStorage.getItem('sd_diff'); if(d&&DIFF[d]) difficulty=d; }catch(_){}
   applyDiff();
   togDiff.addEventListener('click', e=>{ e.stopPropagation(); difficulty=DIFF_ORDER[(DIFF_ORDER.indexOf(difficulty)+1)%3]; try{ localStorage.setItem('sd_diff',difficulty); }catch(_){} applyDiff(); });
