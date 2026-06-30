@@ -88,8 +88,8 @@
   #carStats{ display:flex; flex-direction:column; gap:5px; margin-top:7px; }
   .stat{ display:flex; align-items:center; gap:8px; }
   .stat label{ font-size:10px; font-weight:800; letter-spacing:1px; color:#c8c6d4; width:34px; text-align:right; }
-  .stat .bar{ flex:1; height:7px; border-radius:4px; background:rgba(255,255,255,.13); overflow:hidden; }
-  .stat .bar i{ display:block; height:100%; border-radius:4px; background:linear-gradient(90deg,#37d6ff,#ffd23b); width:50%; transition:width .5s cubic-bezier(.34,1.3,.5,1); }
+  .stat .bar{ flex:1; height:9px; border-radius:5px; background:rgba(0,0,0,.36); overflow:hidden; box-shadow:inset 0 1px 3px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.05); }
+  .stat .bar i{ display:block; height:100%; border-radius:5px; background:linear-gradient(90deg,#37d6ff,#5fe08a 55%,#ffd23b); box-shadow:0 0 9px rgba(95,224,138,.55); width:50%; transition:width .5s cubic-bezier(.34,1.3,.5,1); }
   #carStatus{ margin-top:8px; font-size:13px; font-weight:800; letter-spacing:.5px; min-height:1.2em; }
   #carStatus.owned{ color:#5fe08a; }
   #carStatus.lock{ pointer-events:auto; cursor:pointer; display:inline-block; padding:6px 14px; border-radius:12px; color:#ffd23b;
@@ -103,8 +103,9 @@
   .paintSw:hover{ transform:scale(1.14); }
   .paintSw.sel{ border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.55); }
   .paintSw.stock{ background:repeating-linear-gradient(45deg,#4a4d57,#4a4d57 3px,#8a8d97 3px,#8a8d97 6px); }
-  .kit{ pointer-events:auto; display:flex; align-items:center; gap:7px; padding:6px 11px; border-radius:11px; cursor:pointer;
-        background:rgba(255,255,255,.06); border:1.5px solid rgba(255,255,255,.14); font-size:11px; font-weight:800; letter-spacing:.5px; transition:.12s; }
+  .kit{ pointer-events:auto; display:flex; align-items:center; gap:7px; padding:7px 12px; border-radius:12px; cursor:pointer;
+        background:linear-gradient(160deg,rgba(255,255,255,.09),rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.13); font-size:11px; font-weight:800; letter-spacing:.5px; transition:.12s;
+        box-shadow:0 3px 10px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.1); }
   .kit .ki{ font-size:14px; line-height:1; }
   .kit b{ flex:0 0 58px; text-align:left; }
   .kit .pips{ display:flex; gap:3px; }
@@ -151,7 +152,7 @@
                  background:linear-gradient(168deg, rgba(var(--accent-rgb,255,120,60),.44), rgba(13,9,17,.82) 72%);
                  box-shadow:0 13px 34px rgba(var(--accent-rgb,255,90,60),.5), inset 0 0 0 1px rgba(var(--accent-rgb,255,210,90),.4); transform:translateY(-5px) scale(1.05); z-index:2; }
   .trackBtn.sel::before{ opacity:1; height:4px; box-shadow:0 0 12px var(--accent,#ff8a3c); }
-  .carArrow{ pointer-events:auto; width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  .carArrow{ pointer-events:auto; width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center;
              font-size:18px; background:rgba(255,255,255,.1); border:1.5px solid rgba(255,255,255,.24); cursor:pointer; transition:.14s; }
   .carArrow:active,.carArrow:hover{ background:rgba(255,150,60,.34); transform:scale(1.08); }
   #settings{ margin-top:4px; padding:10px 14px; border-radius:16px; background:rgba(12,7,20,.5);
@@ -214,7 +215,7 @@
   @keyframes panelIn{ from{ opacity:0; transform:translateY(10px); } to{ opacity:1; transform:none; } }
   #ctaRow{ flex:0 0 auto; justify-content:center; padding:6px 14px calc(env(safe-area-inset-bottom,8px) + 12px); }
   #trackPick{ flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x mandatory; max-width:100%; width:100%;
-              justify-content:flex-start; padding:8px 4px 10px; margin-top:10px; -webkit-overflow-scrolling:touch; }
+              justify-content:safe center; padding:8px 4px 10px; margin-top:10px; -webkit-overflow-scrolling:touch; }
   #trackPick::-webkit-scrollbar{ height:0; }
   .trackBtn{ scroll-snap-align:center; flex:0 0 auto; }
 
@@ -257,22 +258,23 @@
         display:flex; gap:14px; }
   #joy{ left:calc(env(safe-area-inset-left,0px) + 16px); }
   #actions{ right:calc(env(safe-area-inset-right,0px) + 16px); display:flex; align-items:flex-end; gap:16px; }
-  .btn{ width:78px; height:78px; border-radius:50%; pointer-events:auto;
+  .btn{ width:80px; height:80px; border-radius:22px; pointer-events:auto;
         display:flex; align-items:center; justify-content:center; flex-direction:column;
-        font-weight:900; font-size:15px; letter-spacing:.5px; color:#fff;
-        background:rgba(40,22,55,.5); border:2px solid rgba(255,255,255,.32);
-        text-shadow:0 1px 3px rgba(0,0,0,.6); transition:transform .05s, background .05s; }
+        font-weight:900; font-size:14px; letter-spacing:.5px; color:#fff;
+        background:rgba(40,22,55,.5); border:1.5px solid rgba(255,255,255,.26);
+        text-shadow:0 1px 3px rgba(0,0,0,.6); transition:transform .06s, background .06s, box-shadow .1s;
+        box-shadow:0 7px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.18); }
   .btn .ico{ font-size:27px; line-height:1; }
-  .btn.big{ width:96px; height:96px; font-size:16px; }
+  .btn.big{ width:98px; height:98px; border-radius:26px; font-size:15px; }
   .btn.big .ico{ font-size:32px; }
-  .btn:active,.btn.on{ transform:scale(.92); }
-  #joy-base{ width:132px; height:132px; border-radius:50%; pointer-events:auto; position:relative;
+  .btn:active,.btn.on{ transform:scale(.93); box-shadow:0 3px 10px rgba(0,0,0,.5), inset 0 2px 8px rgba(0,0,0,.25); }
+  #joy-base{ width:132px; height:132px; border-radius:30px; pointer-events:auto; position:relative;
              background:radial-gradient(circle at 50% 45%, rgba(255,255,255,.12), rgba(40,22,55,.5));
-             border:2px solid rgba(255,255,255,.30); box-shadow:inset 0 0 20px rgba(0,0,0,.35); touch-action:none; }
+             border:1.5px solid rgba(255,255,255,.26); box-shadow:0 7px 20px rgba(0,0,0,.45), inset 0 0 20px rgba(0,0,0,.35); touch-action:none; }
   #joy-base::before,#joy-base::after{ position:absolute; left:50%; transform:translateX(-50%); font-size:15px; font-weight:900; opacity:.65; pointer-events:none; text-shadow:0 1px 3px rgba(0,0,0,.6); }
   #joy-base::before{ content:'▲'; top:5px; color:#7effb0; }      /* up = accelerate */
   #joy-base::after{ content:'▼'; bottom:5px; color:#ff9a9a; }    /* down = brake */
-  #joy-knob{ width:62px; height:62px; border-radius:50%; position:absolute; left:50%; top:50%;
+  #joy-knob{ width:62px; height:62px; border-radius:18px; position:absolute; left:50%; top:50%;
              margin:-31px 0 0 -31px; transform:translate(0,0); pointer-events:none;
              background:radial-gradient(circle at 40% 35%, #ffe2a0, #ff7a3c);
              border:2px solid rgba(255,255,255,.6); box-shadow:0 4px 14px rgba(0,0,0,.45); transition:background .08s; }
