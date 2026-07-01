@@ -16,7 +16,7 @@
   /* ---------- HUD ---------- */
   #hud{ position:fixed; inset:0; pointer-events:none; z-index:5;
         font-weight:bold; text-shadow:0 2px 6px rgba(0,0,0,.55); }
-  body.inmenu #hud{ display:none; }   /* keep race lap/timer from bleeding behind the menu */
+  body.inmenu #hud, body.inbattle #hud{ display:none; }   /* keep race lap/timer from bleeding behind the menu / battle */
   #vignette{ position:fixed; inset:0; pointer-events:none; z-index:3; mix-blend-mode:multiply;
              background:radial-gradient(125% 115% at 50% 42%, rgba(255,255,255,1) 50%, rgba(120,90,140,.92) 80%, rgba(30,18,45,.78) 100%); }  /* cinematic edge darkening */
   .panel{ position:absolute; background:linear-gradient(160deg, rgba(32,17,46,.58), rgba(12,7,20,.52));
@@ -204,6 +204,12 @@
   #resBtnRow{ display:flex; gap:12px; margin-top:14px; }
   .cta2{ pointer-events:auto; font-size:min(4.2vw,18px); font-weight:800; padding:11px 24px; border-radius:13px;
          background:rgba(255,255,255,.12); color:#fff; border:2px solid rgba(255,255,255,.25); box-shadow:none; animation:none; cursor:pointer; }
+  .cta2.battle{ background:linear-gradient(150deg,rgba(150,30,30,.55),rgba(90,20,40,.5)); border-color:rgba(255,90,90,.6); color:#ffd7d7; }
+  #brHud{ position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:22; pointer-events:none; display:none; flex-direction:column; align-items:center; gap:5px; }
+  #brHud.show{ display:flex; }
+  #brAlive{ font-weight:900; letter-spacing:1px; font-size:min(4.4vw,16px); color:#ffd24a; text-shadow:0 2px 6px #000; }
+  #brHpWrap{ width:min(52vw,200px); height:12px; border-radius:7px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.22); overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.4); }
+  #brHpFill{ height:100%; width:100%; background:linear-gradient(90deg,#ff3b3b,#ff8a3b,#5fe08a); transition:width .12s linear; }
   #coinBadge{ position:fixed; top:14px; right:16px; z-index:30; pointer-events:none; font-size:min(4.4vw,19px); font-weight:900; letter-spacing:.5px;
               color:#ffd23b; background:linear-gradient(150deg,rgba(40,24,12,.82),rgba(20,12,28,.72)); padding:7px 16px; border-radius:12px;
               border:1px solid rgba(255,210,59,.5); box-shadow:0 4px 16px rgba(0,0,0,.4); }
@@ -399,6 +405,7 @@
 </div>
 
 <!-- menu -->
+<div id="brHud"><div id="brAlive">🔥 6 ALIVE</div><div id="brHpWrap"><div id="brHpFill"></div></div></div>
 <div id="menu" class="overlay">
   <div id="coinBadge">🪙 0</div>
   <div id="topBar">
@@ -462,7 +469,7 @@
       </div>
     </div>
   </div>
-  <div id="ctaRow"><div class="cta" id="startBtn">▶&nbsp; RACE</div><div class="cta cta2 champ" id="champBtn">🏆&nbsp; CUP</div></div>
+  <div id="ctaRow"><div class="cta" id="startBtn">▶&nbsp; RACE</div><div class="cta cta2 champ" id="champBtn">🏆&nbsp; CUP</div><div class="cta cta2 battle" id="battleBtn">💥&nbsp; BATTLE</div></div>
 </div>
 
 <!-- results -->
@@ -888,7 +895,7 @@ function saveGhostIfBest(){ if(ghostRec.length<5) return;    // keep only the FA
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
 const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert)
 let difficulty='normal';
-const DIFF={ easy:{base:1.05, cap:1.16, aggro:0.96, acc:1.0}, normal:{base:1.17, cap:1.40, aggro:1.10, acc:1.18}, hard:{base:1.26, cap:1.52, aggro:1.24, acc:1.38} };  // acc = AI corner-exit accel/boost+grip power (NOT top speed -> no runaway); easy stays beatable, hard matches a maxed+upgraded player
+const DIFF={ easy:{base:0.95, cap:1.08, aggro:0.96, acc:1.0}, normal:{base:1.08, cap:1.26, aggro:1.04, acc:1.25}, hard:{base:1.20, cap:1.46, aggro:1.14, acc:1.5} };  // acc drives AI corner-carry + accel to match a maxed player on the angular tracks (NOT top speed -> no runaway)
 let aiCap=1.18, aiAggro=1.0, aiAccel=1.0;   // band ceiling + corner/boost aggression + accel power, set from difficulty
 const CHAMP_PTS=[10,6,4,2,1,1];                                        // points by finishing rank
 let bestLap = null;
@@ -2692,7 +2699,8 @@ function aiInput(c){
   const farI=(c.trackIdx+Math.round(aim*1.6)+8)%SAMPLES, f=samplePts[farI];
   const curve=Math.max(bend, Math.abs(angleDiff(Math.atan2(f.x-tx, f.y-tz), desired)));
   // brake toward a corner-appropriate speed (sharper corner -> slower) instead of a single threshold
-  const targetSpd=clamp((64 - curve*70)*aiAggro, 17, 74);                                     // aggression: carry MORE corner speed (brake later) on hard
+  const gripCarry = c.isPlayer ? (0.9+0.12*(c.gripMul||1)+0.03*(c.tireLvl||0)) : (1.02+0.45*(aiAccel-1));   // GRIP/TIRES let a car carry more corner speed; AI corner-carry scales with difficulty to match a maxed player
+  const targetSpd=clamp((64 - curve*70)*aiAggro*gripCarry, 17, 80);                            // aggression: carry MORE corner speed (brake later) on hard
   let brake = speed > targetSpd+3;
   if(curve>0.5 && !c._inCorner){ c._inCorner=true; c._missThis = !window.__auto && Math.random()<((c.aiMiss||0)*(c.isRival?0.25:1)); }   // decide the miss ONCE per corner; the RIVAL barely errs
   else if(curve<0.28) c._inCorner=false;
@@ -2844,6 +2852,7 @@ function showBest(){ elBest.classList.remove('show'); void elBest.offsetWidth; e
 
 function startGame(){
   if(!isOwned(selectedCar)){ renderShop(); return; }     // must own the selected car
+  if(brActive) endBattle();                              // leaving Battle Royale for a normal race
   audio.start();
   if(currentTheme) playMusic(currentTheme.theme);
   placeGrid();
@@ -2872,6 +2881,7 @@ function pauseGame(){ if(state!=='race') return; state='paused'; document.getEle
 function resumeGame(){ if(state!=='paused') return; document.getElementById('pauseMenu').classList.add('hidden'); state='race'; }
 function showMenu(){                                       // back to the garage/menu (shop)
   state='menu'; menuT=0; champ.active=false; hidePauseUI(); document.body.classList.add('inmenu');
+  if(brActive) endBattle();                               // clear any Battle Royale state (guns, zone, HP)
   if(ghostMesh) ghostMesh.visible=false; ghostActive=false;   // no ghost in the garage
   elResults.classList.add('hidden'); document.getElementById('champ').classList.add('hidden'); elMenu.classList.remove('hidden');
   const sb=document.getElementById('scoreBox'); if(sb) sb.style.display='none';   // clear race HUD leftovers
@@ -2901,6 +2911,107 @@ function showStandings(){
   else nb.textContent='NEXT: '+TRACKS[champ.order[champ.round]].name+' →';
   document.getElementById('champ').classList.remove('hidden');
 }
+/* =========================================================================
+   BATTLE ROYALE — GTA-style vehicular combat: roof gun, health, shrinking zone, last car standing
+   ========================================================================= */
+const BR={ cars:6, maxHP:160, dmg:6, range:54, gunCd:0.7, zoneDps:9, shrink:1.5, zoneMin:46, orbit:28 };   // cars = BR grid size (races stay at CONFIG.aiCount+1; extras spawned only for battle)
+let brActive=false, brAlive=0, brWon=false, zoneR=300, zoneCX=0, zoneCZ=0, zoneMesh=null, brTracers=[];
+function mountGun(rig){ if(rig.gun||!rig.group) return;
+  const gm=new THREE.MeshStandardMaterial({color:0x23262c, metalness:0.82, roughness:0.36});
+  const g=new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.3,0.18,10), gm));                           // turret ring
+  const yaw=new THREE.Group(); yaw.position.y=0.12; g.add(yaw);
+  const rec=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.2,0.42), gm); rec.position.z=0.03; yaw.add(rec);          // receiver
+  const bar=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.055,0.95,8), gm); bar.rotation.x=Math.PI/2; bar.position.set(0,0.03,0.6); yaw.add(bar);   // barrel
+  const mzl=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.12,8), gm); mzl.rotation.x=Math.PI/2; mzl.position.set(0,0.03,1.08); yaw.add(mzl);   // muzzle brake
+  const d=rig.dims||{H:1.5,Lz:4.6}; g.position.set(0, d.H*0.68, -d.Lz*0.04);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow=!isTouch; });
+  rig.group.add(g); rig.gun=g; rig.gunYaw=yaw; rig.muzzle=mzl; }
+function buildZone(){ if(zoneMesh){ scene.remove(zoneMesh); zoneMesh.geometry.dispose(); }
+  const geo=new THREE.CylinderGeometry(1,1,80,64,1,true);
+  zoneMesh=new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color:0x3aa0ff, transparent:true, opacity:0.13, side:THREE.DoubleSide, depthWrite:false}));
+  zoneMesh.position.set(zoneCX,26,zoneCZ); zoneMesh.scale.set(zoneR,1,zoneR); scene.add(zoneMesh); }
+function addTracer(a,b){ const ln=new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]), new THREE.LineBasicMaterial({color:0xffcf5a, transparent:true, opacity:0.9}));
+  scene.add(ln); brTracers.push({ln,t:0.06}); }
+function brTarget(c){ let best=null, bd=BR.range*BR.range;
+  for(const o of cars){ if(o===c||!o.alive) continue; const dx=o.pos.x-c.pos.x, dz=o.pos.y-c.pos.y, dd=dx*dx+dz*dz; if(dd<bd){ bd=dd; best=o; } } return best; }
+function damageCar(c, amt){ if(!c.alive) return; c.hp-=amt; if(c.isPlayer) updateBRHud();
+  if(c.hp<=0){ c.hp=0; c.alive=false; brAlive--;
+    for(let i=0;i<22;i++) sparks.emit(c.pos.x,(c.visY||0)+1,c.pos.y,(Math.random()-.5)*11,3+Math.random()*5,(Math.random()-.5)*11,0.55,11+Math.random()*7);
+    tireSmoke.emit(c.pos.x,(c.visY||0)+0.6,c.pos.y,0,1.2,0,1.0,22);
+    c.rig.group.visible=false; if(c.shadowMesh) c.shadowMesh.visible=false;
+    if(c.isPlayer && !brWon){ brWon=true; brFinish(brAlive+1); }
+    else if(brAlive<=1 && !brWon){ brWon=true; brFinish(1); } } }
+function brInput(c){                                                     // free-roam combat AI: stay inside the zone + orbit the nearest enemy
+  const dC=Math.hypot(c.pos.x-zoneCX, c.pos.y-zoneCZ); let tx,tz;
+  if(dC>zoneR-16){ tx=zoneCX; tz=zoneCZ; }
+  else if(c._brTarget){ const t=c._brTarget, a=Math.atan2(c.pos.y-t.pos.y,c.pos.x-t.pos.x)+0.6; tx=t.pos.x+Math.cos(a)*BR.orbit; tz=t.pos.y+Math.sin(a)*BR.orbit; }
+  else { tx=zoneCX+Math.sin(raceTime*0.3+c.trackIdx)*40; tz=zoneCZ+Math.cos(raceTime*0.3+c.trackIdx)*40; }
+  const diff=angleDiff(Math.atan2(tx-c.pos.x, tz-c.pos.y), c.heading);
+  return { throttle:true, brake:Math.abs(diff)>1.5, steer:clamp(diff*2.2,-1,1), drift:false, boost:false }; }
+function battleFrame(dt){ raceTime+=dt;
+  const braking=keys.down||joyY<-0.3;
+  const pin = window.__auto ? brInput(player) : { throttle: autoDrive?!braking:(keys.up||joyY>0.25), brake:braking, steer:clamp((keys.left?1:0)-(keys.right?1:0)+joyX,-1,1), drift:keys.space, boost:keys.shift };
+  if(player.alive) updateCar(player, pin, dt);
+  for(let i=1;i<cars.length;i++){ const c=cars[i]; if(!c.alive) continue; c._brTarget=brTarget(c); updateCar(c, brInput(c), dt); }
+  resolveCollisions();
+  zoneR=Math.max(BR.zoneMin, zoneR-BR.shrink*dt); if(zoneMesh) zoneMesh.scale.set(zoneR,1,zoneR);
+  if(player.alive) player._brTarget=brTarget(player);
+  for(const c of cars){ if(!c.alive) continue;
+    if(c.rig.gunYaw && c._brTarget){ const dx=c._brTarget.pos.x-c.pos.x, dz=c._brTarget.pos.y-c.pos.y; c.rig.gunYaw.rotation.y=Math.atan2(dx,dz)-c.heading; }
+    c._gunT=(c._gunT||0)-dt;
+    if(c._brTarget && c._gunT<=0){ c._gunT=BR.gunCd;
+      const mz=new THREE.Vector3(); (c.rig.muzzle||c.rig.group).getWorldPosition(mz);
+      sparks.emit(mz.x,mz.y,mz.z,0,0,0,0.1,5);
+      addTracer(mz.clone(), new THREE.Vector3(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y));
+      sparks.emit(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y,(Math.random()-.5)*4,2,(Math.random()-.5)*4,0.22,6);
+      if(c.isPlayer) camShake=Math.min(camShake+0.12,0.6);
+      damageCar(c._brTarget, BR.dmg); } }
+  for(const c of cars){ if(!c.alive) continue; const dC=Math.hypot(c.pos.x-zoneCX,c.pos.y-zoneCZ); if(dC>zoneR) damageCar(c, BR.zoneDps*dt); }
+  for(let i=brTracers.length-1;i>=0;i--){ const t=brTracers[i]; t.t-=dt; if(t.t<=0){ scene.remove(t.ln); t.ln.geometry.dispose(); t.ln.material.dispose(); brTracers.splice(i,1); } else t.ln.material.opacity=(t.t/0.06)*0.9; }
+  cars.forEach(c=>{ if(c.alive) syncCarMesh(c); });
+  if(cinePass) cinePass.uniforms.uSpeed.value=clamp(player.vel.length()/CONFIG.topSpeed-0.35,0,1)*0.5;
+  if(camShake>0) camShake=Math.max(0,camShake-dt*1.6);
+  updateCamera(dt); updateBRHud(); }
+function startBattle(){ if(!isOwned(selectedCar)){ renderShop(); return; }
+  if(brActive) endBattle();
+  brActive=true; champ.active=false; dailyActive=false; brWon=false; brTracers=[];
+  while(cars.length < BR.cars){ cars.push(makeCar(CONFIG.colors.ai[cars.length%CONFIG.colors.ai.length], false)); }   // spawn extra fighters for the battle (races stay at 4)
+  upgradeCars();                                                         // build real models + liveries/kits for the new cars
+  currentTrack=0; selectTrack(0);                                        // city = the open GTA-style arena
+  zoneCX=trackCentroid.x; zoneCZ=trackCentroid.y; zoneR=trackRadius+70; buildZone();
+  audio.start(); if(currentTheme) playMusic(currentTheme.theme);
+  const m=carMul(selectedCar); player.spdMul=m.spd; player.gripMul=m.grip; player.engLvl=0; player.tireLvl=0; player.nosMax=1; player.nosDrain=player.nosForce=player.nosFill=1;
+  cars.forEach((c,i)=>{ c.rig.group.visible=true; c.hp=BR.maxHP; c.alive=true; c._gunT=Math.random()*0.4; c._brTarget=null; c.boost=0; mountGun(c.rig);
+    const a=(i/cars.length)*6.283, rr=trackRadius*0.5; c.pos.set(zoneCX+Math.cos(a)*rr, zoneCZ+Math.sin(a)*rr); c.heading=Math.atan2(zoneCX-c.pos.x, zoneCZ-c.pos.y); c.vel.set(0,0); c.air=0; c.trackIdx=i*47; syncCarMesh(c); });
+  brAlive=cars.length;
+  raceTime=0; countdown=3.0; goTimer=0; lastBeepN=99; state='countdown';
+  document.body.classList.remove('inmenu'); elMenu.classList.add('hidden'); elResults.classList.add('hidden');
+  document.getElementById('pauseBtn').classList.add('show'); document.getElementById('camBtn').classList.add('show'); document.getElementById('pauseMenu').classList.add('hidden');
+  document.getElementById('brHud').classList.add('show');
+  document.body.classList.add('inbattle');               // hide the race lap/position HUD during battle
+  _f.set(Math.sin(player.heading),Math.cos(player.heading)); _scy=null;
+  camera.position.set(player.pos.x-_f.x*CONFIG.camDist, CONFIG.camHeight, player.pos.y-_f.y*CONFIG.camDist); }
+function endBattle(){ brActive=false; document.body.classList.remove('inbattle');
+  if(zoneMesh){ scene.remove(zoneMesh); zoneMesh=null; }
+  brTracers.forEach(t=>{ scene.remove(t.ln); }); brTracers=[];
+  const h=document.getElementById('brHud'); if(h) h.classList.remove('show');
+  cars.forEach(c=>{ c.alive=true; c.hp=BR.maxHP; if(c.rig.gun){ c.rig.group.remove(c.rig.gun); c.rig.gun=c.rig.gunYaw=c.rig.muzzle=null; } if(c.rig.group) c.rig.group.visible=true; if(c.shadowMesh) c.shadowMesh.visible=true; });
+  while(cars.length > CONFIG.aiCount+1){ const c=cars.pop(); if(c.rig&&c.rig.group){ scene.remove(c.rig.group); disposeGroup(c.rig.group); } if(c.shadowMesh) scene.remove(c.shadowMesh); }   // remove the extra battle fighters (back to the race grid)
+}
+function brFinish(place){ state='finished'; hidePauseUI();
+  const h=document.getElementById('brHud'); if(h) h.classList.remove('show');
+  const won=place===1, reward=won?600:Math.max(60,Math.round(360/place));
+  coins+=reward; saveCoins(); renderCoins();
+  document.getElementById('resTitle').innerHTML = won?'👑 VICTORY ROYALE!' : '☠️ ELIMINATED';
+  document.getElementById('resPos').innerHTML = '#'+place+' <span style="font-size:.5em;opacity:.7">/ '+cars.length+'</span>';
+  document.getElementById('resStats').innerHTML = won?'Last car standing. 👑' : ('Placed '+ordinal(place)+' of '+cars.length+'.');
+  const rs=document.getElementById('resStars'); if(rs) rs.querySelectorAll('i').forEach(el=>el.classList.remove('on'));
+  animateCount(document.getElementById('resReward'), reward, '+', ' 🪙');
+  document.getElementById('nextBtn').textContent='NEW BATTLE ▸';
+  elResults.classList.remove('hidden'); if(audio&&audio.ok) audio.update(0,0,false); }
+function updateBRHud(){ const bar=document.getElementById('brHpFill'); if(bar) bar.style.width=(Math.max(0,player.hp||0)/BR.maxHP*100)+'%';
+  const al=document.getElementById('brAlive'); if(al) al.textContent='🔥 '+brAlive+' ALIVE'; }
 function finishRace(){
   player.finished=true; state='finished'; hidePauseUI();
   const r=rankOf(player), won=r===1;
@@ -2964,6 +3075,7 @@ function update(dt){
   } else if(state==='paused'){
     updateCamera(dt);                                                          // keep the camera alive; world frozen
   } else if(state==='race'){
+    if(brActive){ battleFrame(dt); } else {
     raceTime+=dt; if(goTimer>0) goTimer-=dt; else if(elFlash.textContent==='GO!') elFlash.classList.remove('show');
     const braking = keys.down || joyY<-0.3;
     const inp = window.__auto ? aiInput(player) : {
@@ -2983,11 +3095,13 @@ function update(dt){
     updateArcadeVisuals(dt);
     updateCamera(dt); updateHUD();
     audio && audio.update(clamp(player.vel.length()/CONFIG.topSpeed,0,1.2), (inp.throttle||inp.boost)?1:0, player.drifting && player.vel.length()>6);
+    }
   } else if(state==='finished'){
-    const inp={throttle:false,brake:true,steer:0,drift:false,boost:false};
+    if(brActive){ updateCamera(dt); }
+    else { const inp={throttle:false,brake:true,steer:0,drift:false,boost:false};
     updateCar(player, inp, dt);
     for(let i=1;i<cars.length;i++) updateCar(cars[i], aiInput(cars[i]), dt);
-    updateCamera(dt); updateHUD();
+    updateCamera(dt); updateHUD(); }
   } else if(state==='menu'){                                   // car showcase: slow orbit around the selected car
     menuT += dt;
     for(let i=1;i<cars.length;i++){ cars[i].rig.group.visible=false; if(cars[i].shadowMesh) cars[i].shadowMesh.visible=false; }   // only the player's car (+ its shadow) on display
@@ -3004,7 +3118,8 @@ function flashIf(n){ n=Math.min(n,3); if(n!==lastFlash && n>=1){ lastFlash=n; fl
 
 function resolveCollisions(){
   for(let i=0;i<cars.length;i++) for(let j=i+1;j<cars.length;j++){
-    const a=cars[i], b=cars[j]; _v.set(b.pos.x-a.pos.x, b.pos.y-a.pos.y); const d=_v.length();
+    const a=cars[i], b=cars[j]; if(brActive && (a.alive===false||b.alive===false)) continue;   // eliminated cars don't collide
+    _v.set(b.pos.x-a.pos.x, b.pos.y-a.pos.y); const d=_v.length();
     const fx=Math.sin(a.heading), fz=Math.cos(a.heading), along=d>0.001?Math.abs((_v.x*fx+_v.y*fz)/d):1;
     const minSep=2.5+2.4*along;          // oriented: ~2.5 side-by-side (close racing stays close), ~4.9 nose-to-tail (cars are long -> no visual merge)
     if(d<minSep && d>0.001){ _v.multiplyScalar(1/d); const push=(minSep-d)*0.5;
@@ -3259,6 +3374,7 @@ function init(){
     document.querySelectorAll('#mPanels .mPanel').forEach(p=>p.classList.toggle('on', p.id==='panel-'+id)); }));
   document.getElementById('startBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false; startGame(); });
   document.getElementById('champBtn').addEventListener('click', e=>{ e.stopPropagation(); startChampionship(); });
+  document.getElementById('battleBtn').addEventListener('click', e=>{ e.stopPropagation(); startBattle(); });
   { const dc=document.getElementById('dailyCard'); if(dc) dc.addEventListener('click', e=>{ e.stopPropagation(); startDaily(); }); }
   document.getElementById('champNext').addEventListener('click', e=>{ e.stopPropagation();
     document.getElementById('champ').classList.add('hidden');
@@ -3303,8 +3419,8 @@ function init(){
   document.getElementById('resumeBtn').addEventListener('click', e=>{ e.stopPropagation(); resumeGame(); });
   document.getElementById('pRestartBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false; startGame(); });
   document.getElementById('pGarageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
-  document.getElementById('againBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false; startGame(); });
-  document.getElementById('nextBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false;
+  document.getElementById('againBtn').addEventListener('click', e=>{ e.stopPropagation(); if(brActive){ startBattle(); return; } champ.active=false; startGame(); });
+  document.getElementById('nextBtn').addEventListener('click', e=>{ e.stopPropagation(); if(brActive){ startBattle(); return; } champ.active=false;
     let ni=(currentTrack+1)%TRACKS.length; if(trackLocked(ni)) ni=0; currentTrack=ni; selectTrack(ni); startGame(); });
   document.getElementById('garageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
   loadCoins(); renderCoins();
