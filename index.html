@@ -673,14 +673,14 @@ function applyLivery(rig, carIdx){
   const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.03, poleH, 6),
     new THREE.MeshStandardMaterial({color:0x141519, roughness:0.5, metalness:0.55}));
   pole.position.y=poleH*0.5; pole.castShadow=!isTouch; ant.add(pole);
-  const fw=clamp(d.Lz*0.13, 0.34, 0.52), fh=fw*0.62;
-  const fgeo=new THREE.PlaneGeometry(fw, fh, 8, 1);
+  const fw=clamp(d.Lz*0.16, 0.4, 0.64), fh=fw*0.6;                                                 // fw = flag LENGTH (streams back), fh = height
+  const fgeo=new THREE.PlaneGeometry(fw, fh, 12, 2); fgeo.translate(fw*0.5, 0, 0);                 // hoist edge at x=0 (right at the pole)
   const flag=new THREE.Mesh(fgeo, new THREE.MeshBasicMaterial({map:flagTex(co.key), side:THREE.DoubleSide, toneMapped:false}));
-  flag.position.set(fw*0.5, poleH-fh*0.55, 0);                                                     // hangs off the +x side of the pole top
-  flag.frustumCulled=false;                                                                        // verts deform each frame -> don't cull on the stale bounds
+  flag.rotation.y=Math.PI/2;                                                                       // length -> -Z: the flag STREAMS BACKWARD off the car (faces the side, so it ripples/flaps)
+  flag.position.set(0, poleH-fh*0.5, 0); flag.frustumCulled=false;                                 // at the pole top (verts deform each frame -> don't cull)
   ant.add(flag);
-  rig.antenna=ant; rig.antFlag=flag; rig.antFW=fw;
-  rig.flagRest=fgeo.attributes.position.array.slice();                                             // rest verts for the flutter wave
+  rig.antenna=ant; rig.antFlag=flag; rig.antFW=fw; rig.antFH=fh;
+  rig.flagRest=fgeo.attributes.position.array.slice();                                             // rest verts for the flap wave
 }
 // sway the antenna from the car's acceleration (tip lags) + flutter the flag with speed — called per car each frame
 function updateAntenna(c, dt){
@@ -688,15 +688,17 @@ function updateAntenna(c, dt){
   if(!c._pv) c._pv=c.vel.clone();
   const ax=(c.vel.x-c._pv.x)/Math.max(dt,1e-3), az=(c.vel.y-c._pv.y)/Math.max(dt,1e-3); c._pv.copy(c.vel);
   const h=c.heading, fx=Math.sin(h), fz=Math.cos(h), aFwd=ax*fx+az*fz, aRight=ax*Math.cos(h)-az*Math.sin(h), spd=c.vel.length();
-  const tX=clamp(-aFwd*0.008 - spd*0.0045 + (c.air>0?0.15:0), -0.46, 0.24);  // accelerate/drag -> lean back; airborne -> kick up
-  const tZ=clamp(aRight*0.011, -0.42, 0.42);                                  // cornering g -> lean to the side
+  const tX=clamp(-aFwd*0.007 - spd*0.003 + (c.air>0?0.14:0), -0.34, 0.22);   // accel/drag -> subtle pole lean (the flag does the wind work); airborne -> kick up
+  const tZ=clamp(aRight*0.010, -0.36, 0.36);                                  // cornering g -> lean to the side
   const k=Math.pow(0.0007,dt);                                               // spring damp/sec
   c._avx=((c._avx||0)+(tX-(c._alx||0))*46*dt)*k; c._alx=(c._alx||0)+c._avx*dt;
   c._avz=((c._avz||0)+(tZ-(c._alz||0))*46*dt)*k; c._alz=(c._alz||0)+c._avz*dt;
   ant.rotation.x=c._alx; ant.rotation.z=c._alz;
-  const fl=c.rig.antFlag, rest=c.rig.flagRest; if(fl&&rest){ const p=fl.geometry.attributes.position, fw=c.rig.antFW||0.4;
-    const amp=clamp(spd*0.007,0.012,0.13); c._aft=(c._aft||0)+dt*(7+spd*0.45);
-    for(let i=0;i<p.count;i++){ const x=rest[i*3], tfrac=(x+fw*0.5)/fw; p.setZ(i, Math.sin(c._aft + x*9.5)*amp*tfrac); }
+  const fl=c.rig.antFlag, rest=c.rig.flagRest; if(fl&&rest){ const p=fl.geometry.attributes.position, L=c.rig.antFW||0.5;
+    const sf=clamp(spd/38,0,1), amp=0.03+sf*0.17; c._aft=(c._aft||0)+dt*(5+spd*0.5);   // apparent wind grows with speed
+    for(let i=0;i<p.count;i++){ const x=rest[i*3], y0=rest[i*3+1], tf=clamp(x/L,0,1);
+      p.setZ(i, Math.sin(c._aft + x*12)*amp*tf);            // side-to-side FLAP, biggest at the free (fly) end
+      p.setY(i, y0 - (1-sf)*0.55*L*tf*tf); }                // droops when slow, lifts to stream horizontally at speed
     p.needsUpdate=true; }
 }
 // ---- PAINT JOB: recolour the body's colour-swatch inside the shared Kenney colormap, leaving glass/lights/wheels intact ----
@@ -1395,25 +1397,32 @@ function makeCityGroundTexture(baseHex){
   const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping;
   if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
 }
-// a building facade (upper floors) by material type, with lit windows
+// a natural building facade (upper floors) by material — returns {map, emis}; only the WINDOWS glow (walls are lit by the scene, not self-emitting)
 function makeFacadeTexture(rng, type){
   const S=256, c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
-  const base = type==='brick'?'#7a3b2e' : type==='glass'?'#2a4a5a' : type==='concrete'?'#7d7f86'
-             : type==='limestone'?'#b9a888' : type==='dark'?'#23262e' : '#9a5a36'; // terracotta
-  x.fillStyle=base; x.fillRect(0,0,S,S);
-  if(type==='brick'||type==='terracotta'){ x.strokeStyle='rgba(0,0,0,.16)'; x.lineWidth=1;
-    for(let yy=0;yy<S;yy+=8){ x.beginPath(); x.moveTo(0,yy); x.lineTo(S,yy); x.stroke(); } }
-  const glassy = type==='glass'||type==='dark';
-  const cols=glassy?6:4, rows=10, pad=14, gap=glassy?2:8;
+  const e=document.createElement('canvas'); e.width=e.height=S; const xe=e.getContext('2d');
+  xe.fillStyle='#000'; xe.fillRect(0,0,S,S);                                            // emissive black except lit windows
+  const PAL={brick:'#8a4a38', glass:'#465a6a', concrete:'#8f887c', limestone:'#c3b396', dark:'#2c2f38', terracotta:'#a5683f', sandstone:'#b49572', steel:'#6f7a86'};
+  const base=PAL[type]||'#8a8478'; x.fillStyle=base; x.fillRect(0,0,S,S);
+  // natural weathering: faint vertical grime streaks + gentle top-to-bottom shade
+  for(let i=0;i<44;i++){ x.fillStyle='rgba(20,14,10,'+(0.015+rng()*0.05)+')'; x.fillRect(rng()*S, 0, 1+rng()*2, S); }
+  const vg=x.createLinearGradient(0,0,0,S); vg.addColorStop(0,'rgba(255,255,255,.05)'); vg.addColorStop(1,'rgba(0,0,0,.10)'); x.fillStyle=vg; x.fillRect(0,0,S,S);
+  if(type==='brick'||type==='terracotta'){ x.strokeStyle='rgba(30,15,10,.20)'; x.lineWidth=1;   // mortar courses
+    for(let yy=0;yy<S;yy+=7){ x.beginPath(); x.moveTo(0,yy); x.lineTo(S,yy); x.stroke(); } }
+  const glassy=(type==='glass');
+  const cols=glassy?7:5, rows=11, pad=12, gap=glassy?3:9;
   const ww=(S-pad*2-gap*(cols-1))/cols, wh=(S-pad*2-gap*(rows-1))/rows;
+  x.fillStyle='rgba(0,0,0,.10)'; for(let r=0;r<rows;r++) x.fillRect(0, pad+r*(wh+gap)-gap*0.6, S, gap*0.6);   // floor/spandrel bands
   for(let r=0;r<rows;r++) for(let cc=0;cc<cols;cc++){
-    const bx=pad+cc*(ww+gap), by=pad+r*(wh+gap), lit=rng()>(type==='dark'?0.45:0.6);
-    x.fillStyle = glassy ? (lit?(rng()>0.5?'#ffe6a8':'#bfe0ff'):'#1b2b38') : (lit?'#ffe6a8':'#2c2f37');
+    const bx=pad+cc*(ww+gap), by=pad+r*(wh+gap), lit=rng()>(type==='dark'?0.52:0.68);
+    x.fillStyle = glassy ? (lit?'#3c4c5c':'#28323e') : (lit?'#584f3c':'#20242c');       // real glass reads dark; a lit pane is only slightly brighter
     x.fillRect(bx,by,ww,wh);
-    if(!glassy){ x.strokeStyle='rgba(0,0,0,.3)'; x.lineWidth=1; x.strokeRect(bx,by,ww,wh); }
+    x.strokeStyle='rgba(0,0,0,.34)'; x.lineWidth=1; x.strokeRect(bx,by,ww,wh);           // window frame
+    if(glassy){ x.fillStyle='rgba(0,0,0,.22)'; x.fillRect(bx+ww*0.5, by, 1, wh); }        // vertical mullion
+    if(lit){ xe.fillStyle=(rng()>0.82?'#cfe4ff':'#ffcf8a'); xe.fillRect(bx+1,by+1,ww-2,wh-2); }   // only lit windows emit (mostly warm, a few cool)
   }
-  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping;
-  if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t;
+  const mk=cv=>{ const t=new THREE.CanvasTexture(cv); t.wrapS=t.wrapT=THREE.RepeatWrapping; if('encoding' in t) t.encoding=THREE.sRGBEncoding; return t; };
+  return {map:mk(c), emis:mk(e)};
 }
 // a ground-floor storefront: signage + awning + lit display windows
 function makeStorefrontTexture(rng, biz){
@@ -1514,6 +1523,7 @@ function buildTerrain(){
     biomeColor(h,col); colors[i*3]=col.r; colors[i*3+1]=col.g; colors[i*3+2]=col.b; }
   g.setAttribute('color', new THREE.BufferAttribute(colors,3)); g.computeVertexNormals();
   const grain=makeGroundGrain(); grain.repeat.set(150,150);          // surface texture over the biome vertex colours
+  grain.anisotropy=Math.min((renderer.capabilities&&renderer.capabilities.getMaxAnisotropy)?renderer.capabilities.getMaxAnisotropy():4, 8);   // crisp ground into the distance (not a blurry smear)
   const mesh=new THREE.Mesh(g, new THREE.MeshStandardMaterial({vertexColors:true, map:grain, bumpMap:grain, bumpScale:0.5, roughness:0.96, metalness:0}));
   mesh.receiveShadow=true; scene.add(mesh);
 }
@@ -1535,7 +1545,7 @@ function buildWater(seaY){                                 // animated ocean for
   const m=new THREE.Mesh(geo,mat); m.position.set(trackCentroid.x,seaY,trackCentroid.y); scene.add(m); waterMat=mat;
 }
 function buildCity(rng){
-  const TYPES=['brick','glass','concrete','limestone','dark','terracotta'];
+  const TYPES=['brick','glass','concrete','limestone','dark','terracotta','sandstone','steel'];
   const facadeTex=TYPES.map(t=>makeFacadeTexture(rng,t));
   const BIZ=[
     {name:"MARIO’S PIZZA", sign:'#c0392b', wall:'#6b4a3a', awn1:'#1e8449', awn2:'#f4f4f4', text:'#fff'},
@@ -1569,14 +1579,14 @@ function buildCity(rng){
     if(rng()>0.86) billboards.push({x,z,y:baseH+Math.min(towerH,30)*0.7,fw,fd});
   }
   const box=new THREE.BoxGeometry(1,1,1); box.translate(0,0.5,0);
-  const addInst=(tex,arr,emI,rough,metal)=>{ if(!arr.length) return;
-    const mat=new THREE.MeshStandardMaterial({map:tex, emissiveMap:tex, emissive:0xfff0d0, emissiveIntensity:emI, roughness:rough, metalness:metal});
+  const addInst=(tex,emis,arr,emI,rough,metal)=>{ if(!arr.length) return;
+    const mat=new THREE.MeshStandardMaterial({map:tex, emissiveMap:emis, emissive:0xffffff, emissiveIntensity:emI, roughness:rough, metalness:metal});
     const m=new THREE.InstancedMesh(box, mat, arr.length);
     arr.forEach((b,k)=>{ m.setMatrixAt(k,b.mtx); _c.setScalar(b.tint); m.setColorAt(k,_c); });
     m.instanceMatrix.needsUpdate=true; if(m.instanceColor) m.instanceColor.needsUpdate=true;
     m.castShadow=!isTouch; m.receiveShadow=!isTouch; scene.add(m); };
-  facadeTex.forEach((tex,fi)=>{ const g=TYPES[fi]==='glass'||TYPES[fi]==='dark'; addInst(tex,towers[fi],0.4, g?0.25:0.85, g?0.4:0.05); });   // brighter lit windows -> glow + bloom
-  storeTex.forEach((tex,si)=> addInst(tex,stores[si],0.5,0.7,0.05));
+  facadeTex.forEach((tex,fi)=>{ const g=TYPES[fi]==='glass'; addInst(tex.map, tex.emis, towers[fi], 0.85, g?0.28:0.92, g?0.32:0.03); });   // walls lit by the scene; ONLY windows glow (natural dusk)
+  storeTex.forEach((tex,si)=> addInst(tex, tex, stores[si], 0.28, 0.72, 0.05));
   // NYC rooftop water towers
   if(waterTowers.length){ const _m=new THREE.Matrix4();
     const tankMat=new THREE.MeshStandardMaterial({color:0x5a4636, roughness:0.9});
@@ -1588,7 +1598,7 @@ function buildCity(rng){
   // glowing billboards on the road-facing walls
   billboards.slice(0,16).forEach((b,k)=>{
     const tex=makeBillboardTexture(k);
-    const mat=new THREE.MeshStandardMaterial({map:tex, emissiveMap:tex, emissive:0xffffff, emissiveIntensity:1.5, side:THREE.DoubleSide, roughness:0.5});
+    const mat=new THREE.MeshStandardMaterial({map:tex, emissiveMap:tex, emissive:0xffffff, emissiveIntensity:0.9, side:THREE.DoubleSide, roughness:0.5});
     const bw=Math.min(b.fw,14), pl=new THREE.Mesh(new THREE.PlaneGeometry(bw,bw*0.5), mat);
     const dx=trackCentroid.x-b.x, dz=trackCentroid.y-b.z, dl=Math.hypot(dx,dz)||1, ox=dx/dl, oz=dz/dl;
     pl.position.set(b.x+ox*(b.fw*0.5+0.3), b.y, b.z+oz*(b.fd*0.5+0.3)); pl.rotation.y=Math.atan2(ox,oz); scene.add(pl);
@@ -1805,7 +1815,8 @@ function buildRoadside(rng){
 // simple instanced block buildings (reused by coast/docks themes)
 function buildBlockBuildings(rng, palette, densityPct, maxH){
   const cols=palette.map(c=>new THREE.Color(c)); const geo=new THREE.BoxGeometry(1,1,1); geo.translate(0,0.5,0);
-  const mat=new THREE.MeshStandardMaterial({roughness:0.85, metalness:0.05});
+  const ft=makeFacadeTexture(rng,'concrete');                                    // natural concrete facade (map + windows-only emissive), tinted per building by instance colour
+  const mat=new THREE.MeshStandardMaterial({map:ft.map, emissiveMap:ft.emis, emissive:0xffffff, emissiveIntensity:0.38, roughness:0.9, metalness:0.05});
   const list=[], block=58, span=820, _m=new THREE.Matrix4();
   for(let gx=-span;gx<=span;gx+=block) for(let gz=-span;gz<=span;gz+=block){
     if(rng()>densityPct) continue; const x=gx+(rng()-0.5)*8, z=gz+(rng()-0.5)*8, fw=18+rng()*20, fd=18+rng()*20;
@@ -3121,8 +3132,8 @@ function buildWorld(idx){
   } else {
     renderer.toneMappingExposure = bright ? 0.74 : warm ? 0.80 : 0.98;   // lowered to offset the stronger hemi+fill (form without blow-out); dusk 1.18->0.98 filmic
     if(bloomPass){
-      bloomPass.strength  = bright ? 0.2 : warm ? 0.26 : (isTouch?0.4:0.5);
-      bloomPass.threshold = bright ? 0.99 : warm ? 0.96 : 0.9;
+      bloomPass.strength  = bright ? 0.2 : warm ? 0.26 : (isTouch?0.32:0.4);
+      bloomPass.threshold = bright ? 0.99 : warm ? 0.96 : 0.93;   // dusk: only the brightest lit windows bloom (not a neon smear)
     }
   }
   if(WORLD){ scene.remove(WORLD); disposeGroup(WORLD); }
