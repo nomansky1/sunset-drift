@@ -2515,11 +2515,11 @@ function carShadowAssets(){
     polygonOffset:true, polygonOffsetFactor:-7, polygonOffsetUnits:-7});  // soft AO contact shadow, beats road + skids
 }
 function syncCarMesh(c){
-  c.visY = roadElevExact(c.pos.x, c.pos.y, c.trackIdx);   // exact interpolated road height -> sits on the road at any speed
+  c.visY = brActive ? terrainHeight(c.pos.x, c.pos.y) : roadElevExact(c.pos.x, c.pos.y, c.trackIdx);   // BR roams off-road -> follow the actual terrain; racing -> ride the road
   c.rig.group.position.set(c.pos.x, 0.06+c.visY+(c.air||0), c.pos.y);   // +air = launched off a crest
   // PITCH the car to follow the road grade so it never clips its nose/tail into a hill (and reads natural on slopes)
   let pitch=0;
-  if(sampleElev.length && !((c.air||0)>0)){
+  if(sampleElev.length && !((c.air||0)>0) && !brActive){
     const i1=(c.trackIdx+3)%SAMPLES, i0=((c.trackIdx-3)%SAMPLES+SAMPLES)%SAMPLES;
     const run=Math.hypot(samplePts[i1].x-samplePts[i0].x, samplePts[i1].y-samplePts[i0].y)||1;
     pitch=clamp(Math.atan2(roadElevAt(c.trackIdx+3)-roadElevAt(c.trackIdx-3), run), -0.32, 0.32);
@@ -2963,19 +2963,23 @@ function updateDebris(dt){ for(let i=debris.length-1;i>=0;i--){ const d=debris[i
 /* =========================================================================
    BATTLE ROYALE — GTA-style vehicular combat: roof gun, health, shrinking zone, last car standing
    ========================================================================= */
-const BR={ cars:6, maxHP:160, dmg:6, range:54, gunCd:0.7, zoneDps:9, shrink:1.5, zoneMin:46, orbit:28 };   // cars = BR grid size (races stay at CONFIG.aiCount+1; extras spawned only for battle)
+const BR={ cars:6, maxHP:160, dmg:2.3, range:54, gunCd:0.24, zoneDps:9, shrink:1.5, zoneMin:46, orbit:28 };   // GATLING: fast fire (gunCd) + low per-hit dmg. cars = BR grid size (races stay at CONFIG.aiCount+1; extras spawned only for battle)
 let brActive=false, brAlive=0, brWon=false, zoneR=300, zoneCX=0, zoneCZ=0, zoneMesh=null, brTracers=[];
 function mountGun(rig){ if(rig.gun||!rig.group) return;
-  const gm=new THREE.MeshStandardMaterial({color:0x23262c, metalness:0.82, roughness:0.36});
+  const gm=new THREE.MeshStandardMaterial({color:0x22252b, metalness:0.86, roughness:0.32});
+  const gm2=new THREE.MeshStandardMaterial({color:0x35383f, metalness:0.7, roughness:0.42});
   const g=new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.3,0.18,10), gm));                           // turret ring
-  const yaw=new THREE.Group(); yaw.position.y=0.12; g.add(yaw);
-  const rec=new THREE.Mesh(new THREE.BoxGeometry(0.28,0.2,0.42), gm); rec.position.z=0.03; yaw.add(rec);          // receiver
-  const bar=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.055,0.95,8), gm); bar.rotation.x=Math.PI/2; bar.position.set(0,0.03,0.6); yaw.add(bar);   // barrel
-  const mzl=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,0.12,8), gm); mzl.rotation.x=Math.PI/2; mzl.position.set(0,0.03,1.08); yaw.add(mzl);   // muzzle brake
-  const d=rig.dims||{H:1.5,Lz:4.6}; g.position.set(0, d.H*0.68, -d.Lz*0.04);
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.3,0.18,10), gm));                           // turret base ring
+  const yaw=new THREE.Group(); yaw.position.y=0.13; g.add(yaw);
+  const rec=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.26,0.4), gm2); rec.position.z=-0.05; yaw.add(rec);        // receiver housing
+  const plB=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.06,10), gm); plB.rotation.x=Math.PI/2; plB.position.z=0.15; yaw.add(plB);   // rear barrel plate
+  const spin=new THREE.Group(); spin.position.set(0,0.02,0.17); yaw.add(spin);                       // GATLING: spinning 6-barrel cluster
+  for(let b=0;b<6;b++){ const a=b/6*6.283; const bar=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.032,0.72,6), gm); bar.rotation.x=Math.PI/2; bar.position.set(Math.cos(a)*0.09, Math.sin(a)*0.09, 0.36); spin.add(bar); }
+  const plF=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.05,10), gm2); plF.rotation.x=Math.PI/2; plF.position.z=0.72; spin.add(plF);   // front muzzle plate
+  const mzl=new THREE.Object3D(); mzl.position.z=0.8; spin.add(mzl);                                  // muzzle point (tracer origin)
+  const d=rig.dims||{H:1.5,Lz:4.6}; g.position.set(0, d.H*0.74, -d.Lz*0.02); g.scale.setScalar(1.25);   // roof-mounted, sized to read clearly
   g.traverse(o=>{ if(o.isMesh) o.castShadow=!isTouch; });
-  rig.group.add(g); rig.gun=g; rig.gunYaw=yaw; rig.muzzle=mzl; }
+  rig.group.add(g); rig.gun=g; rig.gunYaw=yaw; rig.gunSpin=spin; rig.muzzle=mzl; }
 function buildZone(){ if(zoneMesh){ scene.remove(zoneMesh); zoneMesh.geometry.dispose(); }
   const geo=new THREE.CylinderGeometry(1,1,80,64,1,true);
   zoneMesh=new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color:0x3aa0ff, transparent:true, opacity:0.13, side:THREE.DoubleSide, depthWrite:false}));
@@ -3010,13 +3014,14 @@ function battleFrame(dt){ raceTime+=dt;
   if(player.alive) player._brTarget=brTarget(player);
   for(const c of cars){ if(!c.alive) continue;
     if(c.rig.gunYaw && c._brTarget){ const dx=c._brTarget.pos.x-c.pos.x, dz=c._brTarget.pos.y-c.pos.y; c.rig.gunYaw.rotation.y=Math.atan2(dx,dz)-c.heading; }
+    if(c.rig.gunSpin){ c._spin=Math.max(c._brTarget?16:0, (c._spin||0)*0.93); c.rig.gunSpin.rotation.z += c._spin*dt; }   // gatling barrels spool + spin hard while firing
     c._gunT=(c._gunT||0)-dt;
-    if(c._brTarget && c._gunT<=0){ c._gunT=BR.gunCd;
+    if(c._brTarget && c._gunT<=0){ c._gunT=BR.gunCd; c._spin=46; c._trTog=!c._trTog;
       const mz=new THREE.Vector3(); (c.rig.muzzle||c.rig.group).getWorldPosition(mz);
-      sparks.emit(mz.x,mz.y,mz.z,0,0,0,0.1,5);
-      addTracer(mz.clone(), new THREE.Vector3(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y));
-      sparks.emit(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y,(Math.random()-.5)*4,2,(Math.random()-.5)*4,0.22,6);
-      if(c.isPlayer) camShake=Math.min(camShake+0.12,0.6);
+      sparks.emit(mz.x,mz.y,mz.z,(Math.random()-.5)*2,(Math.random()-.5)*2,(Math.random()-.5)*2,0.08,4);
+      if(c._trTog) addTracer(mz.clone(), new THREE.Vector3(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y));   // tracer every other round (rapid gatling fire)
+      sparks.emit(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y,(Math.random()-.5)*3,1.5,(Math.random()-.5)*3,0.16,4);
+      if(c.isPlayer) camShake=Math.min(camShake+0.05,0.5);
       damageCar(c._brTarget, BR.dmg); } }
   for(const c of cars){ if(!c.alive) continue; const dC=Math.hypot(c.pos.x-zoneCX,c.pos.y-zoneCZ); if(dC>zoneR) damageCar(c, BR.zoneDps*dt); }
   for(let i=brTracers.length-1;i>=0;i--){ const t=brTracers[i]; t.t-=dt; if(t.t<=0){ scene.remove(t.ln); t.ln.geometry.dispose(); t.ln.material.dispose(); brTracers.splice(i,1); } else t.ln.material.opacity=(t.t/0.06)*0.9; }
@@ -3029,7 +3034,7 @@ function startBattle(){ if(!isOwned(selectedCar)){ renderShop(); return; }
   brActive=true; champ.active=false; dailyActive=false; brWon=false; brTracers=[];
   while(cars.length < BR.cars){ cars.push(makeCar(CONFIG.colors.ai[cars.length%CONFIG.colors.ai.length], false)); }   // spawn extra fighters for the battle (races stay at 4)
   upgradeCars();                                                         // build real models + liveries/kits for the new cars
-  currentTrack=0; selectTrack(0);                                        // city = the open GTA-style arena
+  selectTrack(currentTrack);                                            // battle in the SELECTED environment (any track's world = the open arena)
   zoneCX=trackCentroid.x; zoneCZ=trackCentroid.y; zoneR=trackRadius+70; buildZone();
   audio.start(); if(currentTheme) playMusic(currentTheme.theme);
   const m=carMul(selectedCar); player.spdMul=m.spd; player.gripMul=m.grip; player.engLvl=0; player.tireLvl=0; player.nosMax=1; player.nosDrain=player.nosForce=player.nosFill=1;
