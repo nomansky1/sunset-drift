@@ -428,6 +428,9 @@
         <div class="trackBtn" data-i="4"><div class="ic">🌲</div><b>PINE PASS</b><span>Forest</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
         <div class="trackBtn" data-i="5"><div class="ic">🏔️</div><b>ALPINE</b><span>Snow Peaks</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
         <div class="trackBtn" data-i="6"><div class="ic">🏜️</div><b>DUST DEVIL</b><span>Desert</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
+        <div class="trackBtn" data-i="7"><div class="ic">🌃</div><b>NEON CROSS</b><span>Midnight Loop</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
+        <div class="trackBtn" data-i="8"><div class="ic">🏜️</div><b>RED CANYON</b><span>Canyon Sweep</span><div class="dots"><i class="on"></i><i class="on"></i><i class="on"></i></div></div>
+        <div class="trackBtn" data-i="9"><div class="ic">🌊</div><b>TIDE LINE</b><span>Shoreline Arc</span><div class="dots"><i class="on"></i><i class="on"></i><i></i></div></div>
       </div>
     </div>
     <div class="mPanel" id="panel-garage">
@@ -625,7 +628,10 @@ const CARS=[ {name:'DRIFTER', kind:'doge',                spd:70,  grip:88, pric
              {name:'HAULER',      kind:'glb', raw:'truck',    yaw:0, spd:93, grip:60, price:1900},
              {name:'FIRETRUCK',   kind:'glb', raw:'firetruck',yaw:0, spd:86, grip:66, price:2200},
              {name:'AMBULANCE',   kind:'glb', raw:'ambulance',yaw:0, spd:90, grip:64, price:2400},
-             {name:'PATRIOT',     kind:'glb', raw:'kartB',    yaw:0, spd:82, grip:93, price:2600} ];
+             {name:'PATRIOT',     kind:'glb', raw:'kartB',    yaw:0, spd:82, grip:93, price:2600},
+             {name:'BOLT',        kind:'glb', raw:'kartC',    yaw:0, spd:84, grip:94, price:2800},
+             {name:'VORTEX',      kind:'glb', raw:'kartD',    yaw:0, spd:86, grip:92, price:3000},
+             {name:'PHANTOM',     kind:'glb', raw:'kartE',    yaw:0, spd:88, grip:90, price:3200} ];
 // Latin-American nationality theme: each car flies a country flag + the flag's colour resonates on the car (Puerto Rico first)
 const COUNTRIES=[
   {name:'PUERTO RICO', key:'pr', col:0xed1c24}, {name:'DOMINICAN REP.', key:'do', col:0x002d62}, {name:'BRAZIL', key:'br', col:0x009b3a},
@@ -633,7 +639,8 @@ const COUNTRIES=[
   {name:'VENEZUELA', key:'ve', col:0x00247d}, {name:'PERU', key:'pe', col:0xd91023}, {name:'CHILE', key:'cl', col:0x0039a6},
   {name:'CUBA', key:'cu', col:0x002a8f}, {name:'ECUADOR', key:'ec', col:0xffdd00}, {name:'URUGUAY', key:'uy', col:0x0038a8},
   {name:'BOLIVIA', key:'bo', col:0x007a3d}, {name:'PANAMA', key:'pa', col:0x005293}, {name:'GUATEMALA', key:'gt', col:0x4997d0}, {name:'PARAGUAY', key:'py', col:0xd52b1e},
-  {name:'USA', key:'us', col:0x002868} ];
+  {name:'USA', key:'us', col:0x002868},
+  {name:'HONDURAS', key:'hn', col:0x0073cf}, {name:'COSTA RICA', key:'cr', col:0x002b7f}, {name:'NICARAGUA', key:'ni', col:0x0067c6} ];
 const PAINTS=[ {name:'Stock',hex:null}, {name:'Red',hex:0xe0202a}, {name:'Orange',hex:0xf07315}, {name:'Gold',hex:0xf2c021},
   {name:'Lime',hex:0x7ac81e}, {name:'Green',hex:0x18a558}, {name:'Teal',hex:0x12a39a}, {name:'Cyan',hex:0x18b5d6},
   {name:'Blue',hex:0x1e6cff}, {name:'Navy',hex:0x23306e}, {name:'Purple',hex:0x7b3ff2}, {name:'Pink',hex:0xe84f9c},
@@ -665,6 +672,9 @@ function flagCanvas(key){
     case 'us': { const sh=H/7; for(let i=0;i<7;i++){ x.fillStyle=(i%2)?'#fff':'#b22234'; x.fillRect(0,i*sh,W,sh+1); }
       x.fillStyle='#3c3b6e'; x.fillRect(0,0,W*0.44,H*0.54);
       x.fillStyle='#fff'; for(let r=0;r<3;r++)for(let c=0;c<4;c++){ x.beginPath(); x.arc(W*0.06+c*W*0.105, H*0.11+r*H*0.17, H*0.026,0,7); x.fill(); } } break;
+    case 'hn': hs(['#0073cf','#fff','#0073cf']); for(let i=0;i<5;i++){ const p=[[.5,.5],[.38,.4],[.62,.4],[.38,.6],[.62,.6]][i]; star(W*p[0],H*p[1],4,'#0073cf'); } break;
+    case 'cr': x.fillStyle='#0067c6'; x.fillRect(0,0,W,H); x.fillStyle='#fff'; x.fillRect(0,H*0.17,W,H*0.66); x.fillStyle='#ce1126'; x.fillRect(0,H*0.33,W,H*0.34); break;
+    case 'ni': hs(['#0067c6','#fff','#0067c6']); x.fillStyle='#4d7c2a'; x.beginPath(); x.arc(W/2,H/2,H*0.12,0,7); x.fill(); break;
     default: x.fillStyle='#888'; x.fillRect(0,0,W,H);
   }
   x.strokeStyle='rgba(0,0,0,.35)'; x.lineWidth=2; x.strokeRect(1,1,W-2,H-2); return c;
@@ -846,6 +856,15 @@ const TRACKS=[
   { name:'DUST DEVIL', sub:'DESERT · CANYON RUN', theme:'desert', groundHex:'#c89a5a', fog:0xe8b878,
     sky:{top:0x3a4a86,bot:0xf0a860,sun:0xfff0c0}, sun:[0.4,0.16,-0.85],
     ctrl:[[-184,-96],[184,-96],[196,-40],[74,122],[-74,122],[-196,-40]] },   // fast triangle: one long back straight
+  { name:'NEON CROSS', sub:'CITY · MIDNIGHT LOOP', theme:'city', groundHex:'#2b2e37', fog:0xc26a8a,
+    sky:{top:0x241a4a,bot:0xc25a80,sun:0xffd8ea}, sun:[0.5,0.12,-0.85],
+    ctrl:[[-185,-95],[80,-98],[188,-32],[188,90],[-40,122],[-185,68]] },   // L-bend street loop
+  { name:'RED CANYON', sub:'DESERT · CANYON SWEEP', theme:'desert', groundHex:'#b5763e', fog:0xe0985a,
+    sky:{top:0x4a3a6a,bot:0xe88448,sun:0xffe4b0}, sun:[-0.4,0.16,-0.86],
+    ctrl:[[-186,-42],[-58,-122],[92,-98],[192,22],[80,112],[-92,132],[-186,58]] },   // flowing canyon sweeps
+  { name:'TIDE LINE', sub:'BEACH · SHORELINE ARC', theme:'beach', groundHex:'#ecd8a8', fog:0xc2e4ec, water:-6,
+    sky:{top:0x2a95dc,bot:0xd6f0ff,sun:0xfff6d6}, sun:[0.34,0.18,-0.9],
+    ctrl:[[-190,-52],[190,-52],[150,92],[0,132],[-150,92]] },   // wide shoreline arch
 ];
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99, menuT = 0;
@@ -893,7 +912,7 @@ function saveGhostIfBest(){ if(ghostRec.length<5) return;    // keep only the FA
   if(prev && prev.time<=raceTime) return;
   try{ localStorage.setItem(key, JSON.stringify({time:+raceTime.toFixed(2), car:selectedCar, s:ghostRec})); }catch(e){} }
 const RACER_NAMES=['YOU','VIPER','BLAZE','NITRO'];
-const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert)
+const TRACK_DIFF=[1.00, 0.98, 1.06, 1.01, 1.05, 1.08, 1.03, 1.04, 1.06, 1.02];   // per-track AI strength + reward (city/coast/docks/beach/forest/alpine/desert/neoncross/canyon/tideline)
 let difficulty='normal';
 const DIFF={ easy:{base:0.95, cap:1.08, aggro:0.96, acc:1.0}, normal:{base:1.08, cap:1.26, aggro:1.04, acc:1.25}, hard:{base:1.20, cap:1.46, aggro:1.14, acc:1.5} };  // acc drives AI corner-carry + accel to match a maxed player on the angular tracks (NOT top speed -> no runaway)
 let aiCap=1.18, aiAggro=1.0, aiAccel=1.0;   // band ceiling + corner/boost aggression + accel power, set from difficulty
@@ -2199,7 +2218,8 @@ function loadCarModels(){
    ['racer','models/cc0/kenney/race.glb'],['racecar','models/cc0/kenney/race-future.glb'],['muscle','models/cc0/kenney/suv.glb'],
    ['roadster','models/cc0/kenney/sedan.glb'],['police','models/cc0/kenney/police.glb'],['taxi','models/cc0/kenney/taxi.glb'],
    ['kart','models/cc0/kenney/kart-oobi.glb'],['truck','models/cc0/kenney/truck.glb'],['firetruck','models/cc0/kenney/firetruck.glb'],['ambulance','models/cc0/kenney/ambulance.glb'],
-   ['kartB','models/cc0/kenney/kart-oodi.glb']].forEach(([k,f])=>{   // CC0 Kenney Car Kit (modular, named wheels)
+   ['kartB','models/cc0/kenney/kart-oodi.glb'],
+   ['kartC','models/cc0/kenney/kart-ooli.glb'],['kartD','models/cc0/kenney/kart-oopi.glb'],['kartE','models/cc0/kenney/kart-oozi.glb']].forEach(([k,f])=>{   // CC0 Kenney Car Kit (modular, named wheels)
     try{ L.load(f, g=>{ fleetRaw[k]=g.scene; if(cars&&cars.length) upgradeCars(); }, undefined, ()=>{}); }catch(e){}
   });
   // sculpted upgrade parts (Blender, CC0) -> real spoiler/diffuser/lip/skirt instead of procedural boxes
