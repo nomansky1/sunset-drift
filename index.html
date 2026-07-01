@@ -160,6 +160,8 @@
   .trackBtn .dots i{ width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,.2); }
   .trackBtn .dots i.on{ background:var(--accent,#ff8a3c); box-shadow:0 0 5px var(--accent,#ff8a3c); }
   .trackBtn:hover{ transform:translateY(-3px); }
+  .trackBtn.locked{ opacity:.4; filter:grayscale(.75); }
+  .trackBtn .clock{ position:absolute; top:5px; right:7px; font-size:15px; z-index:3; text-shadow:0 1px 3px #000; }
   .trackBtn.sel{ border-color:rgba(var(--accent-rgb,255,210,90),.9);
                  background:linear-gradient(168deg, rgba(var(--accent-rgb,255,120,60),.44), rgba(13,9,17,.82) 72%);
                  box-shadow:0 13px 34px rgba(var(--accent-rgb,255,90,60),.5), inset 0 0 0 1px rgba(var(--accent-rgb,255,210,90),.4); transform:translateY(-5px) scale(1.05); z-index:2; }
@@ -818,25 +820,25 @@ const TERRAIN={ coast:{amp:15,biome:'coast'}, desert:{amp:44,biome:'desert'}, fo
 const TRACKS=[
   { name:'GOLDEN MILE', sub:'DOWNTOWN · GOLDEN HOUR', theme:'city', groundHex:'#33363d', fog:0xe6885f,
     sky:{top:0x3a2160,bot:0xff9a5a,sun:0xfff2c0}, sun:[-0.5,0.12,-0.85],
-    ctrl:[[-180,-120],[160,-130],[190,-80],[185,60],[150,125],[70,105],[20,140],[-60,120],[-160,130],[-192,75],[-185,-50]] },
+    ctrl:[[-185,-88],[-45,-92],[55,-66],[120,-92],[185,-80],[188,80],[55,118],[-95,110],[-190,70]] },   // street GP: long straights + a chicane
   { name:'OCEAN DRIVE', sub:'SUNSET COAST · PALM SWEEP', theme:'coast', groundHex:'#cdab6e', fog:0xffc890, water:-4,
     sky:{top:0x2a55a0,bot:0xffb878,sun:0xfff0c0}, sun:[0.45,0.10,-0.88],
-    ctrl:[[-175,-70],[-70,-155],[100,-150],[195,-55],[205,55],[110,160],[-70,170],[-180,90],[-185,-25]] },
+    ctrl:[[-182,-64],[-30,-120],[110,-88],[188,20],[86,96],[-70,128],[-172,66]] },   // flowing coastal sweeps (fast)
   { name:'THE DOCKS', sub:'INDUSTRIAL · CARGO CIRCUIT', theme:'docks', groundHex:'#2c2e34', fog:0xbcd6ea,
     sky:{top:0x2f7fd0,bot:0xd2e8f7,sun:0xfff4e0}, sun:[-0.5,0.34,-0.78],   // bright blue daytime sky + clouds (was industrial grey)
-    ctrl:[[-175,-115],[40,-130],[60,-65],[160,-80],[185,30],[110,55],[150,150],[-40,160],[-65,80],[-175,95]] },
+    ctrl:[[-185,-90],[5,-95],[15,-25],[185,-20],[185,92],[-45,96],[-55,25],[-185,18]] },   // Z / L technical: two 90-ish sweeps
   { name:'SUNSET BEACH', sub:'GOLDEN SANDS · OCEAN', theme:'beach', groundHex:'#e8d2a0', fog:0xbfe0e8, water:-6,
     sky:{top:0x2a8fd8,bot:0xcfeeff,sun:0xfff4d0}, sun:[0.3,0.18,-0.9],
-    ctrl:[[-180,-55],[-50,-150],[140,-150],[195,-55],[130,-15],[175,80],[60,165],[-110,150],[-178,35]] },
+    ctrl:[[-60,-186],[60,-186],[176,-42],[118,122],[-118,122],[-176,-42]] },   // wide open hexagon w/ a flat start straight
   { name:'PINE PASS', sub:'FOREST · MOUNTAIN TWISTS', theme:'forest', groundHex:'#3f5a34', fog:0x9ab0a0,
     sky:{top:0x2a6abf,bot:0xbfe0f0,sun:0xffffff}, sun:[-0.4,0.32,-0.7],
-    ctrl:[[-150,-125],[-20,-145],[60,-100],[150,-135],[185,-40],[120,20],[180,95],[70,150],[-30,110],[-95,165],[-170,85],[-110,5],[-165,-55]] },
+    ctrl:[[-185,-60],[-50,-116],[92,-76],[192,-8],[128,82],[-8,112],[-140,140],[-196,46]] },   // twisty serpentine (technical)
   { name:'ALPINE', sub:'SNOW PEAKS · ICE PASS', theme:'snow', groundHex:'#e8eef5', fog:0xdfeaf2,
     sky:{top:0x4a6a9a,bot:0xdce8f4,sun:0xffffff}, sun:[0.2,0.34,-0.78],
-    ctrl:[[-170,-100],[80,-132],[175,-95],[185,15],[120,55],[175,120],[40,150],[-70,128],[-150,150],[-185,30],[-150,-50]] },
+    ctrl:[[-95,-180],[95,-180],[180,-30],[180,30],[95,180],[-95,180],[-180,30],[-180,-30]] },   // tall stadium: long side straights + smooth ends
   { name:'DUST DEVIL', sub:'DESERT · CANYON RUN', theme:'desert', groundHex:'#c89a5a', fog:0xe8b878,
     sky:{top:0x3a4a86,bot:0xf0a860,sun:0xfff0c0}, sun:[0.4,0.16,-0.85],
-    ctrl:[[-195,-60],[-60,-160],[130,-150],[200,-40],[130,25],[195,110],[60,170],[-110,160],[-190,60],[-130,0],[-200,-30]] },
+    ctrl:[[-184,-96],[184,-96],[196,-40],[74,122],[-74,122],[-196,-40]] },   // fast triangle: one long back straight
 ];
 let state = 'menu';           // menu | countdown | race | finished | paused
 let countdown = 0, goTimer = 0, raceTime = 0, lastBeepN = 99, menuT = 0;
@@ -898,10 +900,18 @@ function saveBest(){ try{ localStorage.setItem('sd_best', JSON.stringify(trackBe
 function loadStars(){ try{ const s=JSON.parse(localStorage.getItem('sd_stars')); trackStars=Array.isArray(s)?s:[]; }catch(e){ trackStars=[]; }
   for(let i=0;i<TRACKS.length;i++) if(trackStars[i]===undefined) trackStars[i]=0; }
 function saveStars(){ try{ localStorage.setItem('sd_stars', JSON.stringify(trackStars)); }catch(e){} }
+let maxTrack=0;                                                       // highest UNLOCKED track — win a track to unlock the next one
+function loadMaxTrack(){ try{ maxTrack=Math.max(0, Math.min(TRACKS.length-1, parseInt(localStorage.getItem('sd_maxtrack'))||0)); }catch(e){ maxTrack=0; } }
+function saveMaxTrack(){ try{ localStorage.setItem('sd_maxtrack', maxTrack); }catch(e){} }
+function trackLocked(i){ return i>maxTrack; }
 function renderStars(n){ const host=document.getElementById('resStars'); if(!host) return; const its=host.querySelectorAll('i');
   its.forEach(el=>el.classList.remove('on'));
   for(let k=0;k<n;k++){ setTimeout(()=>{ if(its[k]){ its[k].classList.add('on'); audio&&audio.coin(); } }, 240+k*260); } }
-function renderTrackStars(){ document.querySelectorAll('.trackBtn').forEach(b=>{ const i=+b.dataset.i; let el=b.querySelector('.cstars');
+function renderTrackStars(){ document.querySelectorAll('.trackBtn').forEach(b=>{ const i=+b.dataset.i;
+  const lock=trackLocked(i); b.classList.toggle('locked', lock);
+  let lk=b.querySelector('.clock'); if(!lk){ lk=document.createElement('div'); lk.className='clock'; b.appendChild(lk); }
+  lk.textContent = lock ? '🔒' : '';
+  let el=b.querySelector('.cstars');
   if(!el){ el=document.createElement('div'); el.className='cstars'; b.appendChild(el); }
   const s=trackStars[i]||0; el.innerHTML='<b>'+'★'.repeat(s)+'</b>'+'★'.repeat(3-s);
   let bt=b.querySelector('.cbest'); if(!bt){ bt=document.createElement('div'); bt.className='cbest'; b.appendChild(bt); }
@@ -910,7 +920,7 @@ function renderTrackStars(){ document.querySelectorAll('.trackBtn').forEach(b=>{
 const TRACK_ACCENT={ city:'#ff7a3c', coast:'#36c8ff', docks:'#8fb4d6', beach:'#2fd8c0', forest:'#5fd06a', snow:'#a8d8ff', desert:'#e8a83a' };
 function trackThumb(ctrl, accent){
   const v3=ctrl.map(p=>new THREE.Vector3(p[0],0,p[1]));
-  const pts=new THREE.CatmullRomCurve3(v3,true,'catmullrom',0.5).getSpacedPoints(72);
+  const pts=new THREE.CatmullRomCurve3(v3,true,'centripetal',0.5).getSpacedPoints(72);   // match the in-game spline
   let mnx=1e9,mxx=-1e9,mnz=1e9,mxz=-1e9; pts.forEach(p=>{ if(p.x<mnx)mnx=p.x; if(p.x>mxx)mxx=p.x; if(p.z<mnz)mnz=p.z; if(p.z>mxz)mxz=p.z; });
   const W=52,H=42,pad=6, sc=Math.min((W-pad*2)/((mxx-mnx)||1),(H-pad*2)/((mxz-mnz)||1));
   const ox=(W-(mxx-mnx)*sc)/2-mnx*sc, oy=(H-(mxz-mnz)*sc)/2-mnz*sc;
@@ -1131,7 +1141,7 @@ function nearest(pos, prev){
    ========================================================================= */
 function buildTrackTables(CTRL){
   const v3 = CTRL.map(p=> new THREE.Vector3(p[0],0,p[1]));
-  const curve = new THREE.CatmullRomCurve3(v3, true, 'catmullrom', 0.5);
+  const curve = new THREE.CatmullRomCurve3(v3, true, 'centripetal', 0.5);   // centripetal = NO overshoot/self-intersection loops at sharp corners (uniform 'catmullrom' overshoots -> barrier crossings)
   const pts = curve.getSpacedPoints(SAMPLES); // SAMPLES+1, last≈first
   samplePts=[]; for(let i=0;i<SAMPLES;i++) samplePts.push(new THREE.Vector2(pts[i].x, pts[i].z));
   sampleTan=[]; sampleNorm=[]; sampleCum=[]; let cum=0;
@@ -1149,6 +1159,14 @@ function buildTrackTables(CTRL){
     sampleHW[i]=Math.min(CONFIG.roadHalfWidth, Math.max(6, radius*0.7)); }   // inner edge must stay inside the turn radius
   const tmp=sampleHW.slice();                                    // light taper so the width transitions (without un-narrowing the apex)
   for(let i=0;i<SAMPLES;i++){ let s=0; for(let k=-2;k<=2;k++) s+=tmp[((i+k)%SAMPLES+SAMPLES)%SAMPLES]; sampleHW[i]=s/5; }
+  // SELF-PROXIMITY narrowing: where the track passes close to a DIFFERENT leg of itself, pull the road+barrier in so the two legs' barriers can never overlap/cross (kills the "barriers crossing" on tight folds — for every track, present or future)
+  const cap=new Array(SAMPLES).fill(999);
+  for(let i=0;i<SAMPLES;i++){ let nearSq=Infinity;
+    for(let k=0;k<SAMPLES;k++){ const id=Math.abs(i-k), d=Math.min(id, SAMPLES-id); if(d<40) continue;   // skip the same continuous stretch
+      const q=samplePts[i].distanceToSquared(samplePts[k]); if(q<nearSq) nearSq=q; }
+    if(nearSq<Infinity) cap[i]=Math.sqrt(nearSq)*0.5 - 2.0; }                       // each leg's barrier (hw+0.75) must fit inside half the gap
+  const capW=cap.slice(); for(let i=0;i<SAMPLES;i++){ let m=999; for(let k=-4;k<=4;k++){ const v=capW[((i+k)%SAMPLES+SAMPLES)%SAMPLES]; if(v<m)m=v; } cap[i]=m; }   // min-filter widens the narrow zone (smooth taper) WITHOUT averaging the minimum back up
+  for(let i=0;i<SAMPLES;i++) sampleHW[i]=Math.max(3.2, Math.min(sampleHW[i], cap[i]));
   // centroid + radius for camera/shadow bounds
   trackCentroid.set(0,0); samplePts.forEach(p=>trackCentroid.add(p)); trackCentroid.multiplyScalar(1/SAMPLES);
   trackRadius=0; samplePts.forEach(p=> trackRadius=Math.max(trackRadius, p.distanceTo(trackCentroid)));
@@ -2605,7 +2623,7 @@ function updateCar(c, inp, dt){
       const intensity = offT?1 : clamp(slip/3 + (hardBrake?0.6:0) + (burnout?0.7:0), 0.4, 1.6);
       for(let s=-1;s<=1;s+=2){ const wx=rx+Math.cos(c.heading)*0.85*s, wz=rz-Math.sin(c.heading)*0.85*s;
         if(offT) dust.emit(wx,0.35+ey,wz,(Math.random()-.5)*2,1.3+Math.random(),(Math.random()-.5)*2, 0.55, 12+Math.random()*8);
-        else if(s>0 || Math.random()<0.7) tireSmoke.emit(wx,0.3+ey,wz,(Math.random()-.5)*1.6, 1.0+Math.random()*0.9, (Math.random()-.5)*1.6, 0.55+intensity*0.1, 10+intensity*4+Math.random()*5);
+        else if(s>0 || Math.random()<0.5) tireSmoke.emit(wx,0.2+ey,wz,(Math.random()-.5)*0.6, 0.45+Math.random()*0.5, (Math.random()-.5)*0.6, 0.4+intensity*0.08, 3+intensity*1.3+Math.random()*2);   // minimal, tight to the tire (small puffs, not a big cloud)
       }
       if(c.skidTimer<=0 && skidPool.length){ dropSkid(rx,rz,c.heading,ey); c.skidTimer=0.022; }
     }
@@ -2900,6 +2918,8 @@ function finishRace(){
   if(champ.active){ champ.round++; showStandings(); if(audio&&audio.ok) audio.update(0,0,false); return; }   // championship -> standings
   const stars = won?3 : (r<=2?2:1);                                      // 1 finish / 2 podium / 3 win
   if(stars>(trackStars[currentTrack]||0)){ trackStars[currentTrack]=stars; saveStars(); }
+  let unlockedName=null;                                                 // WIN a track -> unlock the next one
+  if(won && currentTrack===maxTrack && maxTrack<TRACKS.length-1){ maxTrack++; saveMaxTrack(); unlockedName=TRACKS[maxTrack].name; }
   const prevBest=trackBest[currentTrack]; let newRecord=false;          // best total time per track
   if(prevBest===undefined || raceTime<prevBest){ trackBest[currentTrack]=raceTime; saveBest(); if(prevBest!==undefined) newRecord=true; }
   const medal = r===1?'🥇 ':r===2?'🥈 ':r===3?'🥉 ':'';
@@ -2908,13 +2928,14 @@ function finishRace(){
   document.getElementById('resPos').innerHTML = medal+ordinal(r);
   document.getElementById('resStats').innerHTML =
     lapSplitsHTML() + 'Total <b>'+fmt(raceTime)+'</b> &nbsp;·&nbsp; Best <b>'+fmt(bestLap)+'</b>'
+    + (unlockedName ? '<br><span style="font-size:.92em;color:#ffd24a;font-weight:800">🔓 UNLOCKED: '+unlockedName+'</span>' : '')
     + (prevGhostT!=null ? '<br><span style="font-size:.82em">👻 '+(raceTime<prevGhostT
         ? '<span style="color:#5fe08a">−'+(prevGhostT-raceTime).toFixed(1)+'s vs your ghost</span>'
         : '<span style="opacity:.8">+'+(raceTime-prevGhostT).toFixed(1)+'s vs your ghost</span>')+'</span>' : '')
     + (coinGrab>0?'<br><span style="font-size:.82em;opacity:.85">🪙 '+coinGrab+' collected on track</span>':'');
   renderStars(stars);
   animateCount(document.getElementById('resReward'), reward, '+', ' 🪙'+(runScore>0?'   ·   '+Math.round(runScore).toLocaleString()+' pts':''));
-  const nextIdx=(currentTrack+1)%TRACKS.length;
+  let nextIdx=(currentTrack+1)%TRACKS.length; if(trackLocked(nextIdx)) nextIdx=0;   // don't send NEXT to a still-locked track
   document.getElementById('nextBtn').textContent = 'NEXT: '+TRACKS[nextIdx].name+' →';
   elResults.classList.remove('hidden');
   if(audio&&audio.ok) audio.update(0,0,false);
@@ -3003,7 +3024,7 @@ function resolveCollisions(){
 
 // one final pass: radial speed blur (sharp centre, streaking edges) + grade + vignette + sRGB
 const CINEMATIC_SHADER = {
-  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uSpeed:{value:0.0}, uContrast:{value:1.14}, uSat:{value:1.3}, uTone:{value:0.9}, uVignette:{value:0.55} },
+  uniforms:{ tDiffuse:{value:null}, uBlur:{value:0.0}, uSpeed:{value:0.0}, uContrast:{value:1.08}, uSat:{value:1.12}, uTone:{value:0.9}, uVignette:{value:0.48} },   // pulled toward natural (less saturated/contrasty = less cartoonish)
   vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader:[
     'precision highp float; varying vec2 vUv; uniform sampler2D tDiffuse;',
@@ -3242,7 +3263,8 @@ function init(){
   document.getElementById('champNext').addEventListener('click', e=>{ e.stopPropagation();
     document.getElementById('champ').classList.add('hidden');
     if(champ.active){ currentTrack=champ.order[champ.round]; selectTrack(currentTrack); startGame(); } else showMenu(); });
-  document.querySelectorAll('.trackBtn').forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); if(state==='menu') selectTrack(+b.dataset.i); }));
+  document.querySelectorAll('.trackBtn').forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); if(state!=='menu') return;
+    const i=+b.dataset.i; if(trackLocked(i)){ popup('🔒 WIN THE TRACK BEFORE IT TO UNLOCK','#ffd24a'); return; } selectTrack(i); }));
   const togDiff=document.getElementById('togDiff'), DIFF_ORDER=['easy','normal','hard'];
   const applyDiff=()=>{ togDiff.textContent='⚙ '+difficulty.toUpperCase(); togDiff.classList.toggle('on', difficulty!=='normal'); const D=DIFF[difficulty]||DIFF.normal; aiCap=D.cap; aiAggro=D.aggro||1; };
   try{ const d=localStorage.getItem('sd_diff'); if(d&&DIFF[d]) difficulty=d; }catch(_){}
@@ -3283,10 +3305,10 @@ function init(){
   document.getElementById('pGarageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
   document.getElementById('againBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false; startGame(); });
   document.getElementById('nextBtn').addEventListener('click', e=>{ e.stopPropagation(); champ.active=false;
-    currentTrack=(currentTrack+1)%TRACKS.length; selectTrack(currentTrack); startGame(); });
+    let ni=(currentTrack+1)%TRACKS.length; if(trackLocked(ni)) ni=0; currentTrack=ni; selectTrack(ni); startGame(); });
   document.getElementById('garageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
   loadCoins(); renderCoins();
-  loadSelCar(); loadOwned(); loadStars(); loadCamView(); loadUpg(); loadBest();
+  loadSelCar(); loadOwned(); loadStars(); loadCamView(); loadUpg(); loadBest(); loadMaxTrack();
   try{ const a=localStorage.getItem('sd_auto'); autoDrive = a===null ? true : a==='1'; }catch(_){ autoDrive=true; }
   document.body.classList.toggle('autodrive', autoDrive);
   document.getElementById('togAuto').classList.toggle('on', autoDrive);
