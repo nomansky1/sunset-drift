@@ -210,6 +210,23 @@
   #brAlive{ font-weight:900; letter-spacing:1px; font-size:min(4.4vw,16px); color:#ffd24a; text-shadow:0 2px 6px #000; }
   #brHpWrap{ width:min(52vw,200px); height:12px; border-radius:7px; background:rgba(0,0,0,.55); border:1px solid rgba(255,255,255,.22); overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   #brHpFill{ height:100%; width:100%; background:linear-gradient(90deg,#ff3b3b,#ff8a3b,#5fe08a); transition:width .12s linear; }
+  #brRockets{ font-weight:900; letter-spacing:.5px; font-size:min(3.8vw,14px); color:#ffb877; text-shadow:0 2px 5px #000; }
+  #brRockets.empty{ color:#7a7f88; }
+  /* combat juice — kept minimal so it never clutters the road */
+  #lowHp{ position:fixed; inset:0; z-index:19; pointer-events:none; opacity:0; transition:opacity .2s linear;
+          box-shadow:inset 0 0 min(28vw,190px) min(9vw,60px) rgba(220,20,20,.85); }
+  #hitMark{ position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) scale(1.6); z-index:23; pointer-events:none;
+            font-size:26px; font-weight:900; color:#fff; text-shadow:0 0 6px #f33,0 1px 3px #000; opacity:0; }
+  #hitMark.show{ animation:hitPop .22s ease-out; }
+  @keyframes hitPop{ 0%{opacity:1; transform:translate(-50%,-50%) scale(.7);} 100%{opacity:0; transform:translate(-50%,-50%) scale(1.7);} }
+  #killFeed{ position:fixed; top:64px; right:14px; z-index:22; pointer-events:none; display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+  .kfLine{ font-weight:800; font-size:min(3.4vw,13px); color:#e8ebf0; background:rgba(10,12,18,.6); padding:3px 9px; border-radius:7px;
+           border-left:3px solid #ff8a3b; text-shadow:0 1px 2px #000; animation:kfIn .2s ease-out; }
+  .kfLine.mine{ border-left-color:#5fe08a; } .kfLine.me{ border-left-color:#ff3b3b; color:#ffd0d0; }
+  @keyframes kfIn{ from{opacity:0; transform:translateX(12px);} to{opacity:1; transform:none;} }
+  #btn-rocket{ display:none; background:rgba(255,120,40,.42); border-color:rgba(255,180,120,.7); }
+  #btn-rocket.on{ background:rgba(255,140,60,.9); }
+  body.inbattle #btn-rocket{ display:flex; }
   #coinBadge{ position:fixed; top:14px; right:16px; z-index:30; pointer-events:none; font-size:min(4.4vw,19px); font-weight:900; letter-spacing:.5px;
               color:#ffd23b; background:linear-gradient(150deg,rgba(40,24,12,.82),rgba(20,12,28,.72)); padding:7px 16px; border-radius:12px;
               border:1px solid rgba(255,210,59,.5); box-shadow:0 4px 16px rgba(0,0,0,.4); }
@@ -399,13 +416,17 @@
 <div id="touch">
   <div id="joy" class="pad"><div id="joy-base"><div id="joy-knob"></div></div></div>
   <div id="actions" class="pad">
+    <div class="btn" id="btn-rocket"><span class="ico">🚀</span>FIRE</div>
     <div class="btn" id="btn-drift"><span class="ico">✦</span>DRIFT</div>
     <div class="btn big" id="btn-boost"><span class="ico">🔥</span>BOOST</div>
   </div>
 </div>
 
 <!-- menu -->
-<div id="brHud"><div id="brAlive">🔥 6 ALIVE</div><div id="brHpWrap"><div id="brHpFill"></div></div></div>
+<div id="brHud"><div id="brAlive">🔥 6 ALIVE</div><div id="brHpWrap"><div id="brHpFill"></div></div><div id="brRockets">🚀 ×3</div></div>
+<div id="lowHp"></div>
+<div id="hitMark">✕</div>
+<div id="killFeed"></div>
 <div id="menu" class="overlay">
   <div id="coinBadge">🪙 0</div>
   <div id="topBar">
@@ -444,6 +465,7 @@
           </div>
           <div id="carStatus"></div>
           <div id="kitRow"></div>
+          <div id="weaponRow"></div>
           <div id="paintRow"></div>
           <div id="styleRow"></div>
         </div>
@@ -796,8 +818,23 @@ function renderShop(){                                   // menu car panel: name
     st.textContent=(afford?'UNLOCK · ':'🔒 ')+c.price+' 🪙';
     st.onclick=(e)=>{ if(e) e.stopPropagation(); if(coins>=CARS[i].price){ coins-=CARS[i].price; saveCoins(); renderCoins(); ownedCars[i]=true; saveOwned(); renderShop(); } };
     btn.classList.add('locked'); btn.innerHTML='🔒 UNLOCK TO RACE'; }
-  renderKits(); renderPaints(); renderStyles();
+  renderKits(); renderArsenal(); renderPaints(); renderStyles();
 }
+function renderArsenal(){                                 // GLOBAL battle-royale weapon upgrades (apply to whichever car you fight in)
+  const host=document.getElementById('weaponRow'); if(!host) return; host.style.display='flex';
+  host.innerHTML='<span class="paintLbl">⚔ BATTLE</span>';
+  WEAPONS.forEach(w=>{ const lv=warsenal[w.key]||0, max=lv>=3, cost=max?0:WEAP_COST[w.key][lv], afford=coins>=cost;
+    const el=document.createElement('div'); el.className='kit'+(max?' max':(afford?' afford':' poor'));
+    el.innerHTML='<span class="ki">'+w.icon+'</span><b>'+w.name+'</b>'+
+      '<span class="pips">'+[0,1,2].map(p=>'<i class="'+(p<lv?'on':'')+'"></i>').join('')+'</span>'+
+      '<span class="kc">'+(max?'MAX':('+'+cost+' 🪙'))+'</span>';
+    if(!max) el.onclick=(e)=>{ if(e) e.stopPropagation(); buyWeapon(w.key); };
+    host.appendChild(el); });
+}
+function buyWeapon(key){ const lv=warsenal[key]||0; if(lv>=3) return; const cost=WEAP_COST[key][lv];
+  if(coins<cost){ renderArsenal(); return; }
+  coins-=cost; saveCoins(); renderCoins(); warsenal[key]=lv+1; saveArsenal();
+  renderArsenal(); audio&&audio.coin&&audio.coin(); }
 function renderStyles(){                                  // garage paint-FINISH picker (gloss/matte/metallic/chrome/pearl)
   const host=document.getElementById('styleRow'); if(!host) return; const i=selectedCar;
   if(!isOwned(i)){ host.style.display='none'; host.innerHTML=''; return; }
@@ -2983,36 +3020,155 @@ function updateDebris(dt){ for(let i=debris.length-1;i>=0;i--){ const d=debris[i
 /* =========================================================================
    BATTLE ROYALE — GTA-style vehicular combat: roof gun, health, shrinking zone, last car standing
    ========================================================================= */
-const BR={ cars:6, maxHP:160, dmg:2.3, range:54, gunCd:0.24, zoneDps:9, shrink:1.5, zoneMin:46, orbit:28 };   // GATLING: fast fire (gunCd) + low per-hit dmg. cars = BR grid size (races stay at CONFIG.aiCount+1; extras spawned only for battle)
+const BR={ cars:6, maxHP:160, dmg:2.3, range:54, gunCd:0.24, zoneDps:9, shrink:1.5, zoneMin:46, orbit:28,
+  rkDmg:52, rkSplash:10, rkSpeed:56, rkTurn:2.0, rkLife:3.4, rkCd:2.4, rkAmmo:3 };   // GATLING: fast/low-dmg hitscan. ROCKETS: slow homing (rkTurn=dodge knob) + splash + knockback, limited ammo
 let brActive=false, brAlive=0, brWon=false, zoneR=300, zoneCX=0, zoneCZ=0, zoneMesh=null, brTracers=[];
+let rockets=[], explosions=[], pickups=[], hpBars=[], mflashes=[], pickupTimer=0;
+// GLOBAL weapon upgrades (persist; apply to the player in battle) — the "gun upgrades" arsenal
+let warsenal={gat:0,rkt:0,arm:0};
+function loadArsenal(){ try{ const w=JSON.parse(localStorage.getItem('sd_arsenal')); if(w&&typeof w==='object') warsenal={gat:w.gat|0,rkt:w.rkt|0,arm:w.arm|0}; }catch(e){} }
+function saveArsenal(){ try{ localStorage.setItem('sd_arsenal', JSON.stringify(warsenal)); }catch(e){} }
+const WEAPONS=[{key:'gat',name:'GATLING',icon:'🔫',desc:'+dmg'},{key:'rkt',name:'ROCKETS',icon:'🚀',desc:'+ammo'},{key:'arm',name:'ARMOR',icon:'🛡',desc:'+HP'}];
+const WEAP_COST={ gat:[120,240,420], rkt:[150,300,520], arm:[130,260,460] };
+function gatMul(c){ return c.isPlayer ? (1+0.28*(warsenal.gat||0)) : 1; }   // player GATLING upgrade scales per-hit dmg
+// SHARED gun materials (built once — every car's turret reuses them; disposeGroup skips SHARED)
+let GUNMAT=null;
+function gunMats(){ if(GUNMAT) return GUNMAT;
+  GUNMAT={ steel:new THREE.MeshStandardMaterial({color:0x2a2e35, metalness:0.9, roughness:0.3}),
+    dark:new THREE.MeshStandardMaterial({color:0x16181c, metalness:0.72, roughness:0.46}),
+    trim:new THREE.MeshStandardMaterial({color:0x3b414a, metalness:0.72, roughness:0.38}),
+    warn:new THREE.MeshStandardMaterial({color:0xd23b2e, metalness:0.35, roughness:0.5}) };
+  Object.values(GUNMAT).forEach(m=>SHARED.add(m)); return GUNMAT; }
 function mountGun(rig){ if(rig.gun||!rig.group) return;
-  const gm=new THREE.MeshStandardMaterial({color:0x22252b, metalness:0.86, roughness:0.32});
-  const gm2=new THREE.MeshStandardMaterial({color:0x35383f, metalness:0.7, roughness:0.42});
-  const g=new THREE.Group();
-  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.3,0.18,10), gm));                           // turret base ring
-  const yaw=new THREE.Group(); yaw.position.y=0.13; g.add(yaw);
-  const rec=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.26,0.4), gm2); rec.position.z=-0.05; yaw.add(rec);        // receiver housing
-  const plB=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.06,10), gm); plB.rotation.x=Math.PI/2; plB.position.z=0.15; yaw.add(plB);   // rear barrel plate
-  const spin=new THREE.Group(); spin.position.set(0,0.02,0.17); yaw.add(spin);                       // GATLING: spinning 6-barrel cluster
-  for(let b=0;b<6;b++){ const a=b/6*6.283; const bar=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.032,0.72,6), gm); bar.rotation.x=Math.PI/2; bar.position.set(Math.cos(a)*0.09, Math.sin(a)*0.09, 0.36); spin.add(bar); }
-  const plF=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.05,10), gm2); plF.rotation.x=Math.PI/2; plF.position.z=0.72; spin.add(plF);   // front muzzle plate
-  const mzl=new THREE.Object3D(); mzl.position.z=0.8; spin.add(mzl);                                  // muzzle point (tracer origin)
-  const d=rig.dims||{H:1.5,Lz:4.6}; g.position.set(0, d.H*0.74, -d.Lz*0.02); g.scale.setScalar(1.25);   // roof-mounted, sized to read clearly
+  const M=gunMats(); const g=new THREE.Group();
+  // ---- MOUNTING MECHANISM: a bolted pedestal anchoring the turret to the roof ----
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(0.62,0.08,0.62), M.dark));                                       // base plate
+  for(let bx=-1;bx<=1;bx+=2) for(let bz=-1;bz<=1;bz+=2){ const bolt=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.12,6), M.trim); bolt.position.set(bx*0.25,0.04,bz*0.25); g.add(bolt); }   // 4 corner bolts
+  const post=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.23,0.22,12), M.steel); post.position.y=0.15; g.add(post);   // support post
+  const ring=new THREE.Mesh(new THREE.CylinderGeometry(0.25,0.25,0.05,18), M.trim); ring.position.y=0.27; g.add(ring);    // slew ring (turret rotates on this)
+  // ---- YAW TURRET (rotates to aim) ----
+  const yaw=new THREE.Group(); yaw.position.y=0.3; g.add(yaw);
+  const rec=new THREE.Mesh(new THREE.BoxGeometry(0.36,0.3,0.48), M.steel); rec.position.set(0,0.07,-0.02); yaw.add(rec);   // receiver
+  const rail=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.05,0.4), M.dark); rail.position.set(0,0.24,-0.02); yaw.add(rail); // top rail
+  const belt=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.22,0.28), M.dark); belt.position.set(-0.28,0.02,-0.07); yaw.add(belt);   // ammo belt box
+  // ---- GATLING: rotating 6-barrel cluster + heat shroud + muzzle brake ----
+  const spin=new THREE.Group(); spin.position.set(0,0.07,0.2); yaw.add(spin);
+  const hub=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,0.1,12), M.trim); hub.rotation.x=Math.PI/2; hub.position.z=0.02; spin.add(hub);
+  for(let b=0;b<6;b++){ const a=b/6*6.283, cx=Math.cos(a)*0.083, cy=Math.sin(a)*0.083;
+    const bar=new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.03,0.8,8), M.steel); bar.rotation.x=Math.PI/2; bar.position.set(cx,cy,0.4); spin.add(bar);
+    const tip=new THREE.Mesh(new THREE.CylinderGeometry(0.033,0.033,0.06,8), M.dark); tip.rotation.x=Math.PI/2; tip.position.set(cx,cy,0.8); spin.add(tip); }
+  const shroud=new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.36,14,1,true), M.dark); shroud.rotation.x=Math.PI/2; shroud.position.z=0.32; spin.add(shroud);   // heat shroud
+  const brake=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.14,0.1,12), M.trim); brake.rotation.x=Math.PI/2; brake.position.z=0.75; spin.add(brake);   // muzzle brake
+  const mzl=new THREE.Object3D(); mzl.position.z=0.86; spin.add(mzl);
+  // ---- ROCKET POD (the launcher): twin tubes over the receiver ----
+  const pod=new THREE.Group(); pod.position.set(0,0.27,0.05); yaw.add(pod); const rmuz=[];
+  for(let rx=-1;rx<=1;rx+=2){ const tube=new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.07,0.42,10), M.dark); tube.rotation.x=Math.PI/2; tube.position.set(rx*0.1,0,0.2); pod.add(tube);
+    const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.06,0.07,10), M.warn); cap.rotation.x=Math.PI/2; cap.position.set(rx*0.1,0,0.41); pod.add(cap);   // red warhead peeking out
+    const rm=new THREE.Object3D(); rm.position.set(rx*0.1,0,0.46); pod.add(rm); rmuz.push(rm); }
+  const d=rig.dims||{H:1.5,Lz:4.6}; g.position.set(0, d.H*0.72, -d.Lz*0.03); g.scale.setScalar(1.12);
   g.traverse(o=>{ if(o.isMesh) o.castShadow=!isTouch; });
-  rig.group.add(g); rig.gun=g; rig.gunYaw=yaw; rig.gunSpin=spin; rig.muzzle=mzl; }
+  rig.group.add(g); rig.gun=g; rig.gunYaw=yaw; rig.gunSpin=spin; rig.muzzle=mzl; rig.rocketMuz=rmuz; rig.rocketPod=pod; }
 function buildZone(){ if(zoneMesh){ scene.remove(zoneMesh); zoneMesh.geometry.dispose(); }
   const geo=new THREE.CylinderGeometry(1,1,80,64,1,true);
   zoneMesh=new THREE.Mesh(geo, new THREE.MeshBasicMaterial({color:0x3aa0ff, transparent:true, opacity:0.13, side:THREE.DoubleSide, depthWrite:false}));
   zoneMesh.position.set(zoneCX,26,zoneCZ); zoneMesh.scale.set(zoneR,1,zoneR); scene.add(zoneMesh); }
 function addTracer(a,b){ const ln=new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]), new THREE.LineBasicMaterial({color:0xffcf5a, transparent:true, opacity:0.9}));
   scene.add(ln); brTracers.push({ln,t:0.06}); }
+/* ---- ROCKETS: homing missile with a turn-rate dodge knob + splash + knockback ---- */
+function buildRocketMesh(){ const M=gunMats(); const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.62,8), M.steel); body.rotation.x=Math.PI/2; g.add(body);
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(0.14,0.28,8), M.warn); nose.rotation.x=-Math.PI/2; nose.position.z=-0.44; g.add(nose);   // nose points -z (lookAt convention)
+  for(let f=0;f<3;f++){ const a=f/3*6.283; const fin=new THREE.Mesh(new THREE.BoxGeometry(0.02,0.17,0.17), M.dark); fin.position.set(Math.cos(a)*0.12, Math.sin(a)*0.12, 0.27); fin.rotation.z=a; g.add(fin); }
+  const glow=new THREE.Mesh(new THREE.SphereGeometry(0.11,8,6), new THREE.MeshBasicMaterial({color:0xffb14a})); glow.position.z=0.36; g.add(glow);   // exhaust at +z (rear)
+  g.scale.setScalar(1.15); return g; }
+function fireRocket(c){ if(!c.rig||!c.rig.rocketMuz||!c.rig.rocketMuz.length||(c._rkT||0)>0) return;
+  if(c.isPlayer){ if((c.rkAmmo||0)<=0) return; c.rkAmmo--; c._rkT=BR.rkCd; updateBRHud(); }
+  else { if(!c._brTarget) return; c._rkT=BR.rkCd*1.9+Math.random()*1.6; }               // AI: no ammo pool, longer cadence
+  c._rkSlot=(c._rkSlot||0)^1; const muz=c.rig.rocketMuz[c._rkSlot]||c.rig.rocketMuz[0];
+  const from=new THREE.Vector3(); muz.getWorldPosition(from);
+  const q=new THREE.Quaternion(); muz.getWorldQuaternion(q); const fwd=new THREE.Vector3(0,0,1).applyQuaternion(q).normalize();
+  const mesh=buildRocketMesh(); mesh.position.copy(from); scene.add(mesh);
+  rockets.push({ mesh, owner:c, vel:fwd.clone().multiplyScalar(BR.rkSpeed), life:BR.rkLife, target:c._brTarget||null, trail:0 });
+  sparks.emit(from.x,from.y,from.z, fwd.x*7,fwd.y*7+2,fwd.z*7, 0.16, 6);                 // launch puff
+  if(c.isPlayer){ camShake=Math.min(camShake+0.24,0.9); if(navigator.vibrate){try{navigator.vibrate(18);}catch(e){}} } }
+function updateRockets(dt){ for(let i=rockets.length-1;i>=0;i--){ const r=rockets[i]; r.life-=dt;
+    let tgt=r.target; if(tgt && !tgt.alive){ tgt=r.target=null; }
+    if(tgt){ const to=new THREE.Vector3(tgt.pos.x-r.mesh.position.x, (tgt.visY||0)+1-r.mesh.position.y, tgt.pos.y-r.mesh.position.z); const dl=to.length();
+      if(dl>0.001){ to.multiplyScalar(1/dl); const cur=r.vel.clone().normalize(); const ang=Math.acos(clamp(cur.dot(to),-1,1));
+        if(ang>0.0001){ cur.lerp(to, Math.min(1, (BR.rkTurn*dt)/ang)).normalize(); }       // capped turn rate = the dodge counterplay
+        r.vel.copy(cur.multiplyScalar(BR.rkSpeed)); } }
+    r.mesh.position.addScaledVector(r.vel, dt);
+    r.mesh.lookAt(r.mesh.position.x+r.vel.x, r.mesh.position.y+r.vel.y, r.mesh.position.z+r.vel.z);   // nose (-z) faces travel
+    r.trail-=dt; if(r.trail<=0){ r.trail=0.018; sparks.emit(r.mesh.position.x, r.mesh.position.y, r.mesh.position.z, 0,0.4,0, 0.24, 2); }
+    let hit=null; for(const o of cars){ if(!o.alive||o===r.owner) continue; const dx=o.pos.x-r.mesh.position.x, dy=(o.visY||0)+1-r.mesh.position.y, dz=o.pos.y-r.mesh.position.z; if(dx*dx+dy*dy+dz*dz<9){ hit=o; break; } }
+    const gy=brActive?terrainHeight(r.mesh.position.x, r.mesh.position.z):0;
+    if(hit || r.mesh.position.y<=gy+0.3 || r.life<=0){ detonateRocket(r); scene.remove(r.mesh); disposeGroup(r.mesh); rockets.splice(i,1); } } }
+function detonateRocket(r){ const p=r.mesh.position.clone();
+  for(let i=0;i<15;i++) sparks.emit(p.x,p.y,p.z,(Math.random()-.5)*13,Math.random()*9,(Math.random()-.5)*13, 0.42, 10+Math.random()*8);
+  tireSmoke.emit(p.x,p.y,p.z, 0,2.2,0, 0.6, 16); addExplosion(p);
+  for(const o of cars){ if(!o.alive) continue; const dx=o.pos.x-p.x, dz=o.pos.y-p.z, dd=Math.hypot(dx,dz);
+    if(dd<BR.rkSplash){ const fall=1-dd/BR.rkSplash; damageCar(o, BR.rkDmg*fall*(o===r.owner?0.2:1), r.owner);
+      if(o.alive){ const kb=fall*8; o.vel.x+=(dx/(dd||1))*kb; o.vel.y+=(dz/(dd||1))*kb; } } }   // knockback shove
+  const pd=Math.hypot(p.x-player.pos.x, p.z-player.pos.y); if(pd<26) camShake=Math.min(camShake+(1-pd/26)*0.7, 1.1); }
+function addExplosion(p){ const m=new THREE.Mesh(new THREE.SphereGeometry(1,12,10), new THREE.MeshBasicMaterial({color:0xffa838, transparent:true, opacity:0.9, depthWrite:false}));
+  m.position.copy(p); scene.add(m); explosions.push({m,t:0}); }
+function updateExplosions(dt){ for(let i=explosions.length-1;i>=0;i--){ const e=explosions[i]; e.t+=dt; e.m.scale.setScalar(1+e.t*30); e.m.material.opacity=Math.max(0,0.9*(1-e.t/0.34));
+    if(e.t>=0.34){ scene.remove(e.m); e.m.geometry.dispose(); e.m.material.dispose(); explosions.splice(i,1); } } }
+function muzzleFlash(x,y,z){ const m=new THREE.Mesh(new THREE.SphereGeometry(0.3,8,6), new THREE.MeshBasicMaterial({color:0xfff0a8, transparent:true, opacity:0.95, depthWrite:false})); m.position.set(x,y,z); scene.add(m); mflashes.push({m,t:0}); }
+function updateMuzzle(dt){ for(let i=mflashes.length-1;i>=0;i--){ const e=mflashes[i]; e.t+=dt; e.m.scale.setScalar(1+e.t*9); e.m.material.opacity=Math.max(0,0.95*(1-e.t/0.06));
+    if(e.t>=0.06){ scene.remove(e.m); e.m.geometry.dispose(); e.m.material.dispose(); mflashes.splice(i,1); } } }
+/* ---- ARENA PICKUPS: contested repair + rocket-ammo crates (respawn to keep the field stocked) ---- */
+function buildPickupMesh(type){ const g=new THREE.Group(); const heal=type==='heal';
+  const crate=new THREE.Mesh(new THREE.BoxGeometry(1.5,1.5,1.5), new THREE.MeshStandardMaterial({color:heal?0x2fbf6a:0xff8a2e, metalness:0.35, roughness:0.55, emissive:heal?0x0f4f2a:0x5a2c08, emissiveIntensity:0.7}));
+  g.add(crate); const mk=new THREE.Mesh(new THREE.OctahedronGeometry(0.42), new THREE.MeshBasicMaterial({color:heal?0xbfffd6:0xffd9a6})); mk.position.y=1.35; g.add(mk);
+  g.traverse(o=>{ if(o.isMesh) o.castShadow=false; }); return g; }
+function spawnPickup(type){ const ang=Math.random()*6.283, rr=18+Math.random()*Math.max(24,zoneR*0.6);
+  const x=zoneCX+Math.cos(ang)*rr, z=zoneCZ+Math.sin(ang)*rr, y=(brActive?terrainHeight(x,z):0)+1.0;
+  const m=buildPickupMesh(type); m.position.set(x,y,z); scene.add(m); pickups.push({m,type,x,z,base:y,spin:Math.random()*6}); }
+function updatePickups(dt){ pickupTimer-=dt;
+  if(pickups.length<4 && pickupTimer<=0){ pickupTimer=3.5; spawnPickup(Math.random()<0.55?'heal':'rkt'); }
+  for(let i=pickups.length-1;i>=0;i--){ const p=pickups[i]; p.spin+=dt; p.m.rotation.y=p.spin*1.5; p.m.position.y=p.base+Math.sin(p.spin*2.2)*0.2;
+    let taken=false; for(const c of cars){ if(!c.alive) continue; if(p.type==='rkt'&&!c.isPlayer) continue;   // only the player uses rocket crates
+      if(Math.hypot(c.pos.x-p.x, c.pos.y-p.z)<3.4){ collectPickup(p,c); taken=true; break; } }
+    if(taken){ scene.remove(p.m); disposeGroup(p.m); pickups.splice(i,1); pickupTimer=Math.min(pickupTimer,1.5); } } }
+function collectPickup(p,c){ if(p.type==='heal'){ c.hp=Math.min(c.hpMax||BR.maxHP, c.hp+55); if(c.isPlayer) updateBRHud(); }
+  else { c.rkAmmo=(c.rkAmmo||0)+2; if(c.isPlayer) updateBRHud(); }
+  for(let i=0;i<10;i++) sparks.emit(p.x,p.base+0.4,p.z,(Math.random()-.5)*6,3+Math.random()*3,(Math.random()-.5)*6, 0.4, 6);
+  if(c.isPlayer){ flash(p.type==='heal'?'+55 HP':'+2 🚀','good'); if(navigator.vibrate){try{navigator.vibrate(14);}catch(e){}} } }
+/* ---- ENEMY HP BARS: floating billboards (research #1 tension driver) ---- */
+function buildHpBars(){ clearHpBars(); for(let i=0;i<cars.length;i++){ const g=new THREE.Group();
+    const bg=new THREE.Mesh(new THREE.PlaneGeometry(2.3,0.36), new THREE.MeshBasicMaterial({color:0x0c0e12, transparent:true, opacity:0.72, depthTest:false})); bg.renderOrder=997;
+    const fl=new THREE.Mesh(new THREE.PlaneGeometry(2.1,0.22), new THREE.MeshBasicMaterial({color:0x5fe08a, depthTest:false})); fl.position.z=0.01; fl.renderOrder=998;
+    g.add(bg); g.add(fl); g.visible=false; scene.add(g); hpBars.push({g,fl}); } }
+function updateHpBars(){ for(let i=0;i<cars.length;i++){ const c=cars[i], b=hpBars[i]; if(!b) continue;
+    if(!c.alive || c.isPlayer){ b.g.visible=false; continue; }                              // player reads the HUD bar instead
+    b.g.visible=true; b.g.position.set(c.pos.x,(c.visY||0)+2.7,c.pos.y); b.g.quaternion.copy(camera.quaternion);
+    const f=clamp(c.hp/(c.hpMax||BR.maxHP),0,1); b.fl.scale.x=Math.max(0.02,f); b.fl.position.x=-(1-f)*1.05;
+    b.fl.material.color.setHex(f>0.5?0x5fe08a:f>0.25?0xffc23b:0xff4b4b); } }
+function clearHpBars(){ hpBars.forEach(b=>{ scene.remove(b.g); b.g.traverse(o=>{ if(o.isMesh){o.geometry.dispose(); o.material.dispose();} }); }); hpBars=[]; }
+/* ---- HIT FEEDBACK: crosshair marker + thin kill feed (kept minimal — no clutter) ---- */
+let _hitT=null;
+function hitMarker(){ const h=document.getElementById('hitMark'); if(!h) return; h.classList.remove('show'); void h.offsetWidth; h.classList.add('show'); }
+function killFeed(by,victim){ const f=document.getElementById('killFeed'); if(!f) return;
+  const vn=victim.brName||'CPU'; let txt,cls='';
+  if(victim.isPlayer){ txt='YOU were wrecked'; cls='me'; }
+  else if(by===player){ txt='You wrecked '+vn; cls='mine'; }
+  else txt=vn+' eliminated';
+  const line=document.createElement('div'); line.className='kfLine'+(cls?' '+cls:''); line.textContent=txt;
+  f.appendChild(line); while(f.children.length>4) f.removeChild(f.firstChild);
+  setTimeout(()=>{ if(line.parentNode) line.parentNode.removeChild(line); }, 3200); }
 function brTarget(c){ let best=null, bd=BR.range*BR.range;
   for(const o of cars){ if(o===c||!o.alive) continue; const dx=o.pos.x-c.pos.x, dz=o.pos.y-c.pos.y, dd=dx*dx+dz*dz; if(dd<bd){ bd=dd; best=o; } } return best; }
-function damageCar(c, amt){ if(!c.alive) return; c.hp-=amt; if(c.isPlayer) updateBRHud();
+function damageCar(c, amt, by){ if(!c.alive) return;
+  if(c.isPlayer && warsenal.arm) amt*=(1-0.12*warsenal.arm);                        // ARMOR upgrade reduces incoming damage
+  c.hp-=amt; if(c.isPlayer) updateBRHud();
+  if(by===player && c!==player) hitMarker();                                        // confirm the player's hits
   if(c.hp<=0){ c.hp=0; c.alive=false; brAlive--;
     for(let i=0;i<22;i++) sparks.emit(c.pos.x,(c.visY||0)+1,c.pos.y,(Math.random()-.5)*11,3+Math.random()*5,(Math.random()-.5)*11,0.55,11+Math.random()*7);
     tireSmoke.emit(c.pos.x,(c.visY||0)+0.6,c.pos.y,0,1.2,0,1.0,22);
     spawnDebris(c.pos.x,(c.visY||0)+0.5,c.pos.y, 13, 10, c.bodyColor, c.visY||0);   // the car BREAKS APART into flying pieces
+    addExplosion(new THREE.Vector3(c.pos.x,(c.visY||0)+0.9,c.pos.y));               // kill flash
+    killFeed(by, c);
     if(navigator.vibrate){ try{navigator.vibrate(40);}catch(e){} }
     c.rig.group.visible=false; if(c.shadowMesh) c.shadowMesh.visible=false;
     if(c.isPlayer && !brWon){ brWon=true; brFinish(brAlive+1); }
@@ -3032,20 +3188,27 @@ function battleFrame(dt){ raceTime+=dt;
   resolveCollisions();
   zoneR=Math.max(BR.zoneMin, zoneR-BR.shrink*dt); if(zoneMesh) zoneMesh.scale.set(zoneR,1,zoneR);
   if(player.alive) player._brTarget=brTarget(player);
-  for(const c of cars){ if(!c.alive) continue;
+  for(const c of cars){ if(!c.alive) continue; c._rkT=(c._rkT||0)-dt;
     if(c.rig.gunYaw && c._brTarget){ const dx=c._brTarget.pos.x-c.pos.x, dz=c._brTarget.pos.y-c.pos.y; c.rig.gunYaw.rotation.y=Math.atan2(dx,dz)-c.heading; }
     if(c.rig.gunSpin){ c._spin=Math.max(c._brTarget?16:0, (c._spin||0)*0.93); c.rig.gunSpin.rotation.z += c._spin*dt; }   // gatling barrels spool + spin hard while firing
     c._gunT=(c._gunT||0)-dt;
     if(c._brTarget && c._gunT<=0){ c._gunT=BR.gunCd; c._spin=46; c._trTog=!c._trTog;
       const mz=new THREE.Vector3(); (c.rig.muzzle||c.rig.group).getWorldPosition(mz);
-      sparks.emit(mz.x,mz.y,mz.z,(Math.random()-.5)*2,(Math.random()-.5)*2,(Math.random()-.5)*2,0.08,4);
+      muzzleFlash(mz.x,mz.y,mz.z);                                                                              // crisp muzzle flash (better shooting fx)
       if(c._trTog) addTracer(mz.clone(), new THREE.Vector3(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y));   // tracer every other round (rapid gatling fire)
-      sparks.emit(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y,(Math.random()-.5)*3,1.5,(Math.random()-.5)*3,0.16,4);
-      if(c.isPlayer) camShake=Math.min(camShake+0.05,0.5);
-      damageCar(c._brTarget, BR.dmg); } }
+      sparks.emit(c._brTarget.pos.x,(c._brTarget.visY||0)+1,c._brTarget.pos.y,(Math.random()-.5)*3,1.5,(Math.random()-.5)*3,0.16,4);   // impact sparks
+      if(c.isPlayer) camShake=Math.min(camShake+0.04,0.4);
+      damageCar(c._brTarget, BR.dmg*gatMul(c), c); }
+    if(!c.isPlayer && c._brTarget && c._rkT<=0){ const dd=Math.hypot(c._brTarget.pos.x-c.pos.x,c._brTarget.pos.y-c.pos.y); if(dd<BR.range && Math.random()<0.6) fireRocket(c); }   // AI occasionally launches a rocket
+    const hf=c.hp/(c.hpMax||BR.maxHP);                                                                          // progressive damage read-out: smoke hurt, fire critical
+    if(hf<0.42){ c._dmgT=(c._dmgT||0)-dt; if(c._dmgT<=0){ c._dmgT=0.13; const x=c.pos.x,y=(c.visY||0)+0.75,z=c.pos.y;
+      tireSmoke.emit(x,y,z,0,1.3,0, hf<0.2?0.6:0.45, hf<0.2?9:6);
+      if(hf<0.2) sparks.emit(x,y,z,(Math.random()-.5)*1.2,2.2,(Math.random()-.5)*1.2,0.32,4); } } }
+  updateRockets(dt); updateExplosions(dt); updateMuzzle(dt); updatePickups(dt);
   for(const c of cars){ if(!c.alive) continue; const dC=Math.hypot(c.pos.x-zoneCX,c.pos.y-zoneCZ); if(dC>zoneR) damageCar(c, BR.zoneDps*dt); }
   for(let i=brTracers.length-1;i>=0;i--){ const t=brTracers[i]; t.t-=dt; if(t.t<=0){ scene.remove(t.ln); t.ln.geometry.dispose(); t.ln.material.dispose(); brTracers.splice(i,1); } else t.ln.material.opacity=(t.t/0.06)*0.9; }
   cars.forEach(c=>{ if(c.alive) syncCarMesh(c); });
+  updateHpBars();
   if(cinePass) cinePass.uniforms.uSpeed.value=clamp(player.vel.length()/CONFIG.topSpeed-0.35,0,1)*0.5;
   if(camShake>0) camShake=Math.max(0,camShake-dt*1.6);
   updateCamera(dt); updateBRHud(); }
@@ -3058,8 +3221,17 @@ function startBattle(){ if(!isOwned(selectedCar)){ renderShop(); return; }
   zoneCX=trackCentroid.x; zoneCZ=trackCentroid.y; zoneR=trackRadius+70; buildZone();
   audio.start(); if(currentTheme) playMusic(currentTheme.theme);
   const m=carMul(selectedCar); player.spdMul=m.spd; player.gripMul=m.grip; player.engLvl=0; player.tireLvl=0; player.nosMax=1; player.nosDrain=player.nosForce=player.nosFill=1;
-  cars.forEach((c,i)=>{ c.rig.group.visible=true; c.hp=BR.maxHP; c.alive=true; c._gunT=Math.random()*0.4; c._brTarget=null; c.boost=0; mountGun(c.rig);
+  rockets.forEach(r=>{scene.remove(r.mesh); disposeGroup(r.mesh);}); rockets=[];   // reset combat systems
+  explosions.forEach(e=>scene.remove(e.m)); explosions=[]; mflashes.forEach(e=>scene.remove(e.m)); mflashes=[];
+  pickups.forEach(p=>{scene.remove(p.m); disposeGroup(p.m);}); pickups=[]; pickupTimer=0;
+  cars.forEach((c,i)=>{ c.rig.group.visible=true;
+    c.hpMax = c.isPlayer ? Math.round(BR.maxHP*(1+0.14*(warsenal.arm||0))) : BR.maxHP;   // ARMOR upgrade raises the player's max HP
+    c.hp=c.hpMax; c.alive=true; c._gunT=Math.random()*0.4; c._brTarget=null; c.boost=0; c._rkT=0; c._dmgT=0;
+    c.rkAmmo = c.isPlayer ? (BR.rkAmmo + (warsenal.rkt||0)) : 0;                          // ROCKETS upgrade grants extra starting ammo
+    c.brName = c.isPlayer ? 'YOU' : (RACER_NAMES[1+((i-1)%(RACER_NAMES.length-1))]+' '+i);  // stable kill-feed name
+    mountGun(c.rig);
     const a=(i/cars.length)*6.283, rr=trackRadius*0.5; c.pos.set(zoneCX+Math.cos(a)*rr, zoneCZ+Math.sin(a)*rr); c.heading=Math.atan2(zoneCX-c.pos.x, zoneCZ-c.pos.y); c.vel.set(0,0); c.air=0; c.trackIdx=i*47; syncCarMesh(c); });
+  buildHpBars(); for(let i=0;i<3;i++) spawnPickup(i%2?'rkt':'heal');   // seed the arena with crates
   brAlive=cars.length;
   raceTime=0; countdown=3.0; goTimer=0; lastBeepN=99; state='countdown';
   document.body.classList.remove('inmenu'); elMenu.classList.add('hidden'); elResults.classList.add('hidden');
@@ -3070,6 +3242,11 @@ function startBattle(){ if(!isOwned(selectedCar)){ renderShop(); return; }
   camera.position.set(player.pos.x-_f.x*CONFIG.camDist, CONFIG.camHeight, player.pos.y-_f.y*CONFIG.camDist); }
 function endBattle(){ brActive=false; document.body.classList.remove('inbattle');
   debris.forEach(d=>scene.remove(d.m)); debris=[];
+  rockets.forEach(r=>{scene.remove(r.mesh); disposeGroup(r.mesh);}); rockets=[];
+  explosions.forEach(e=>{scene.remove(e.m); e.m.geometry.dispose(); e.m.material.dispose();}); explosions=[];
+  mflashes.forEach(e=>{scene.remove(e.m); e.m.geometry.dispose(); e.m.material.dispose();}); mflashes=[];
+  pickups.forEach(p=>{scene.remove(p.m); disposeGroup(p.m);}); pickups=[]; clearHpBars();
+  const lo=document.getElementById('lowHp'); if(lo) lo.style.opacity=0;
   if(zoneMesh){ scene.remove(zoneMesh); zoneMesh=null; }
   brTracers.forEach(t=>{ scene.remove(t.ln); }); brTracers=[];
   const h=document.getElementById('brHud'); if(h) h.classList.remove('show');
@@ -3087,8 +3264,11 @@ function brFinish(place){ state='finished'; hidePauseUI();
   animateCount(document.getElementById('resReward'), reward, '+', ' 🪙');
   document.getElementById('nextBtn').textContent='NEW BATTLE ▸';
   elResults.classList.remove('hidden'); if(audio&&audio.ok) audio.update(0,0,false); }
-function updateBRHud(){ const bar=document.getElementById('brHpFill'); if(bar) bar.style.width=(Math.max(0,player.hp||0)/BR.maxHP*100)+'%';
-  const al=document.getElementById('brAlive'); if(al) al.textContent='🔥 '+brAlive+' ALIVE'; }
+function updateBRHud(){ const hpMax=player.hpMax||BR.maxHP, f=Math.max(0,player.hp||0)/hpMax;
+  const bar=document.getElementById('brHpFill'); if(bar) bar.style.width=(f*100)+'%';
+  const al=document.getElementById('brAlive'); if(al) al.textContent='🔥 '+brAlive+' ALIVE';
+  const rk=document.getElementById('brRockets'); if(rk){ rk.textContent='🚀 ×'+(player.rkAmmo||0); rk.classList.toggle('empty',(player.rkAmmo||0)<=0); }
+  const lo=document.getElementById('lowHp'); if(lo) lo.style.opacity = f<0.35 ? ((0.35-f)/0.35*0.8).toFixed(2) : 0; }
 function finishRace(){
   player.finished=true; state='finished'; hidePauseUI();
   const r=rankOf(player), won=r===1;
@@ -3285,6 +3465,7 @@ function bindKeys(){
     if(e.code==='Enter' && (state==='menu')) startGame();
     if(e.code==='KeyR' && (state==='finished'||state==='race')) startGame();
     if(e.code==='KeyC' && state!=='menu') cycleCam();
+    if((e.code==='KeyF'||e.code==='KeyE'||e.code==='KeyQ') && brActive && state==='race' && player.alive){ fireRocket(player); e.preventDefault(); }   // launch a homing rocket
     if(e.code==='Escape' && state==='race'){ pauseGame(); }
     else if(e.code==='Escape' && state==='paused'){ resumeGame(); }
   });
@@ -3299,6 +3480,8 @@ function bindButton(id, key){ const el=document.getElementById(id); if(!el) retu
 function bindTouch(){
   initJoystick();                                            // joystick now drives steer + accelerate/brake
   bindButton('btn-drift','space'); bindButton('btn-boost','shift');
+  const rb=document.getElementById('btn-rocket');            // FIRE = launch a homing rocket (press, not hold)
+  if(rb) rb.addEventListener('pointerdown', e=>{ e.preventDefault(); if(brActive && state==='race' && player.alive){ fireRocket(player); rb.classList.add('on'); setTimeout(()=>rb.classList.remove('on'),130); } });
 }
 function initJoystick(){
   const base=document.getElementById('joy-base'), knob=document.getElementById('joy-knob');
@@ -3502,7 +3685,7 @@ function init(){
     let ni=(currentTrack+1)%TRACKS.length; if(trackLocked(ni)) ni=0; currentTrack=ni; selectTrack(ni); startGame(); });
   document.getElementById('garageBtn').addEventListener('click', e=>{ e.stopPropagation(); showMenu(); });
   loadCoins(); renderCoins();
-  loadSelCar(); loadOwned(); loadStars(); loadCamView(); loadUpg(); loadBest(); loadMaxTrack();
+  loadSelCar(); loadOwned(); loadStars(); loadCamView(); loadUpg(); loadArsenal(); loadBest(); loadMaxTrack();
   try{ const a=localStorage.getItem('sd_auto'); autoDrive = a===null ? true : a==='1'; }catch(_){ autoDrive=true; }
   document.body.classList.toggle('autodrive', autoDrive);
   document.getElementById('togAuto').classList.toggle('on', autoDrive);
