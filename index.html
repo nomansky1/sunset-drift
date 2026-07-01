@@ -608,6 +608,7 @@ let trackCentroid = new THREE.Vector2();
 let trackRadius = 200;
 let dust, sparks, tireSmoke, skidPool = [], skidCursor = 0, skidShared;
 let debrisGeo=[], debris=[];   // Kenney car-part meshes flung when a car is hit / destroyed (breaks into pieces)
+let lowCityRaw=null, lowCityBox=null;   // low-poly city model (Antonmoek, TurboSquid free) -> distant skyline backdrop for city/docks
 let audio;
 let sunLight=null, sunDirV=null, glowTex=null, skyMat=null;
 let beachSea=null, waterMat=null;        // seaside themes: ocean water plane + radial terrain falloff into the sea
@@ -1590,6 +1591,7 @@ function buildWater(seaY){                                 // animated ocean for
   const m=new THREE.Mesh(geo,mat); m.position.set(trackCentroid.x,seaY,trackCentroid.y); scene.add(m); waterMat=mat;
 }
 function buildCity(rng){
+  placeLowCityBackdrop(rng);                                     // distant low-poly skyline
   const TYPES=['brick','glass','concrete','limestone','dark','terracotta','sandstone','steel'];
   const facadeTex=TYPES.map(t=>makeFacadeTexture(rng,t));
   const BIZ=[
@@ -1610,6 +1612,7 @@ function buildCity(rng){
     if(rng()<0.10) continue;                                        // empty lot / plaza
     const fw=16+rng()*22, fd=16+rng()*22;
     if(distToTrackApprox(x,z) < CONFIG.roadHalfWidth + Math.hypot(fw,fd)*0.5 + 5.5) continue; // clear road + sidewalk
+    if(lowCityRaw && Math.hypot(x-trackCentroid.x, z-trackCentroid.y) < trackRadius*0.95) continue;   // leave the infield for the low-poly downtown centerpiece
     const distC=Math.hypot(x-trackCentroid.x, z-trackCentroid.y), downtown=clamp(1-distC/520,0,1);
     const towerH=4 + downtown*52 + rng()*rng()*40;
     const fi = downtown>0.5 ? (rng()>0.5?1:4) : Math.floor(rng()*TYPES.length); // downtown = glass/dark towers
@@ -1929,6 +1932,7 @@ function buildCoast(rng){
 }
 // DOCKS: stacked shipping containers + warehouses + guardrails
 function buildDocks(rng){
+  placeLowCityBackdrop(rng);                                     // distant low-poly skyline
   const _m=new THREE.Matrix4(), block=48, span=760, positions=[];
   for(let gx=-span;gx<=span;gx+=block) for(let gz=-span;gz<=span;gz+=block){
     const x=gx+(rng()-0.5)*10, z=gz+(rng()-0.5)*10;
@@ -2232,6 +2236,19 @@ function loadCarModels(){
   ['debris-bumper','debris-door','debris-tire','debris-plate-a','debris-plate-b','debris-drivetrain','debris-door-window','debris-spoiler-a','debris-spoiler-b'].forEach(f=>{
     try{ L.load('models/cc0/kenney/'+f+'.glb', g=>{ g.scene.traverse(o=>{ if(o.isMesh&&o.geometry){ SHARED.add(o.geometry); if(o.material) SHARED.add(o.material); debrisGeo.push({geo:o.geometry, mat:o.material}); } }); }, undefined, ()=>{}); }catch(e){}
   });
+  // low-poly city model (Antonmoek) -> distant skyline backdrop
+  try{ L.load('models/cc0/lowcity.glb', g=>{ lowCityRaw=g.scene;
+    lowCityRaw.traverse(o=>{ if(o.isMesh){ if(o.geometry) SHARED.add(o.geometry); if(o.material){ SHARED.add(o.material); o.material.fog=false; } o.castShadow=false; o.receiveShadow=false; } });
+    lowCityBox=new THREE.Box3().setFromObject(lowCityRaw);
+    if(cars&&cars.length && currentTheme && (currentTheme.theme==='city'||currentTheme.theme==='docks')) selectTrack(currentTrack); }, undefined, ()=>{}); }catch(e){}
+}
+// place a few copies of the low-poly city as a distant skyline ring (city/docks themes)
+function placeLowCityBackdrop(rng){
+  if(!lowCityRaw||!lowCityBox) return;
+  const sz=new THREE.Vector3(); lowCityBox.getSize(sz); const span=Math.max(sz.x,sz.z)||100;
+  const s=(trackRadius*1.45)/span;                                // fit the whole low-poly downtown INSIDE the track loop -> race around it
+  const c=lowCityRaw.clone(true); c.position.set(trackCentroid.x, -lowCityBox.min.y*s, trackCentroid.y);
+  c.scale.setScalar(s); c.rotation.y=0.4; scene.add(c);           // -> WORLD (disposed on rebuild; geo/mat SHARED)
 }
 // wheel layout taken straight from the car pack's own scene (mapped to +Z = forward)
 const CAR_WHEELS=[

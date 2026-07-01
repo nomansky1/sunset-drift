@@ -28,3 +28,5 @@ Everything else — the city (buildings, storefronts, signage, billboards, water
 streetlights), the road geometry, UI, particles, and audio — is generated procedurally in code.
 
 Branded/copyrighted vehicle models are intentionally NOT used, since this game is distributed commercially.
+
+- **Low-poly city district** (infield downtown on the city/docks tracks) — "Lowpoly City Free Pack" by **Antonmoek** (TurboSquid free license; generic/non-branded stylized buildings, not a real city). Converted OBJ→glTF via Blender, merged + quantized + WebP-textured for web.
